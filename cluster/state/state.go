@@ -2,8 +2,10 @@ package state
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/vedadiyan/coms/cluster/client"
@@ -33,6 +35,20 @@ func JoinNode(node *pb.Node) {
 	defer mut.Unlock()
 	nodes[node.Id] = node
 	conns[node.Id] = conn
+	go func() {
+		for {
+			_, err := conn.GetId(context.TODO(), &pb.Void{})
+			if err != nil {
+				mut.Lock()
+				defer mut.Unlock()
+				delete(nodes, node.Id)
+				delete(conns, node.Id)
+				fmt.Println("disconnected")
+				break
+			}
+			<-time.After(time.Second)
+		}
+	}()
 	log.Println("joined", node.Port)
 }
 
