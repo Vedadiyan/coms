@@ -13,6 +13,7 @@ import (
 )
 
 var (
+	ctx   context.Context
 	id    string
 	mut   sync.RWMutex
 	nodes map[string]*pb.Node
@@ -20,6 +21,7 @@ var (
 )
 
 func init() {
+	ctx = context.TODO()
 	nodes = make(map[string]*pb.Node)
 	conns = make(map[string]pb.ClusterRpcServiceClient)
 	id = uuid.New().String()
@@ -37,16 +39,25 @@ func JoinNode(node *pb.Node) {
 	conns[node.Id] = conn
 	go func() {
 		for {
-			_, err := conn.GetId(context.TODO(), &pb.Void{})
-			if err != nil {
-				mut.Lock()
-				defer mut.Unlock()
-				delete(nodes, node.Id)
-				delete(conns, node.Id)
-				fmt.Println("disconnected")
-				break
+			select {
+			case <-ctx.Done():
+				{
+					return
+				}
+			default:
+				{
+					_, err := conn.GetId(context.TODO(), &pb.Void{})
+					if err != nil {
+						mut.Lock()
+						defer mut.Unlock()
+						delete(nodes, node.Id)
+						delete(conns, node.Id)
+						fmt.Println("disconnected")
+						break
+					}
+					<-time.After(time.Second)
+				}
 			}
-			<-time.After(time.Second)
 		}
 	}()
 	log.Println("joined", node.Port)
