@@ -52,11 +52,11 @@ func handleDisconnect(conn pb.ClusterRpcServiceClient, id string) {
 				_, err := conn.GetId(context.TODO(), &pb.Void{})
 				if err != nil {
 					mut.Lock()
-					defer mut.Unlock()
 					delete(nodes, id)
 					delete(conns, id)
-					log.Panicln("connection lost", id)
-					break
+					mut.Unlock()
+					log.Println("connection lost", id)
+					return
 				}
 				<-time.After(time.Second)
 			}
@@ -96,20 +96,27 @@ func AppendNodes(_nodes []*pb.Node) int {
 }
 
 func GossipAll(gossiperId string) {
+	cb := make([]func(), 0)
 	mut.RLock()
-	defer mut.RUnlock()
 	nodeList := pb.NodeList{}
 	for _, value := range nodes {
 		nodeList.Nodes = append(nodeList.Nodes, value)
 	}
 	for key, value := range conns {
+		vv := value
 		if key == gossiperId {
 			continue
 		}
 		if key == id {
 			continue
 		}
-		value.Gossip(context.TODO(), &nodeList)
+		cb = append(cb, func() {
+			vv.Gossip(context.TODO(), &nodeList)
+		})
+	}
+	mut.RUnlock()
+	for _, fn := range cb {
+		fn()
 	}
 }
 
