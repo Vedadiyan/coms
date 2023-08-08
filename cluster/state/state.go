@@ -2,7 +2,6 @@ package state
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"sync"
 	"time"
@@ -37,30 +36,32 @@ func JoinNode(node *pb.Node) {
 	defer mut.Unlock()
 	nodes[node.Id] = node
 	conns[node.Id] = conn
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				{
-					return
+	go handleDisconnect(conn, node.Id)
+	log.Println("joined", node.Port)
+}
+
+func handleDisconnect(conn pb.ClusterRpcServiceClient, id string) {
+	for {
+		select {
+		case <-ctx.Done():
+			{
+				return
+			}
+		default:
+			{
+				_, err := conn.GetId(context.TODO(), &pb.Void{})
+				if err != nil {
+					mut.Lock()
+					defer mut.Unlock()
+					delete(nodes, id)
+					delete(conns, id)
+					log.Panicln("connection lost", id)
+					break
 				}
-			default:
-				{
-					_, err := conn.GetId(context.TODO(), &pb.Void{})
-					if err != nil {
-						mut.Lock()
-						defer mut.Unlock()
-						delete(nodes, node.Id)
-						delete(conns, node.Id)
-						fmt.Println("disconnected")
-						break
-					}
-					<-time.After(time.Second)
-				}
+				<-time.After(time.Second)
 			}
 		}
-	}()
-	log.Println("joined", node.Port)
+	}
 }
 
 func JoinSelf(node *pb.Node) {
@@ -77,6 +78,7 @@ func GetNodes(cb func(node *pb.Node, conn pb.ClusterRpcServiceClient)) {
 		cb(value, conns[key])
 	}
 }
+
 func AppendNodes(_nodes []*pb.Node) int {
 	mut.RLock()
 	local := make([]*pb.Node, 0)
