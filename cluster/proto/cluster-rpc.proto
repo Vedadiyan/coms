@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package coms.proto.cluster;
+
+option go_package = "autogen/cluster";
+
+message Node {
+    string id = 1;
+    string host = 2;
+    int32 port = 3;
+}
+
+message NodeList {
+    string id = 1;
+    repeated Node nodes = 2;
+}
+
+message Void {
+}
+
+message Id {
+    string id = 1;
+}
+
+service ClusterRpcService {
+    rpc Gossip(NodeList) returns(Void);
+    rpc GetId(Void) returns(Id);
+}
