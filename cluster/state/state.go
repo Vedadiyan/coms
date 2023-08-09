@@ -56,23 +56,29 @@ func handleDisconnect(conn pb.ClusterRpcServiceClient, id string) {
 			}
 		default:
 			{
-				_, err := conn.GetId(context.TODO(), &pb.Void{})
+				newId, err := conn.GetId(context.TODO(), &pb.Void{})
 				if err != nil {
 					disconnected = true
 					log.Println("connection lost", id)
 				}
-				if disconnected {
+				if disconnected && newId != nil {
+					mut.Lock()
+					nodes[newId.Id] = nodes[id]
+					conns[newId.Id] = conns[id]
+					delete(nodes, id)
+					delete(conns, id)
+					mut.Unlock()
 					nodeList := pb.NodeList{}
 					nodeList.Id = GetId()
 					mut.RLock()
 					for key, value := range nodes {
-						if key == id {
+						if key == newId.Id {
 							continue
 						}
 						nodeList.Nodes = append(nodeList.Nodes, value)
 					}
 					mut.RUnlock()
-					_, err := conns[id].Gossip(context.TODO(), &nodeList)
+					_, err := conns[newId.Id].Gossip(context.TODO(), &nodeList)
 					if err == nil {
 						disconnected = false
 					}
