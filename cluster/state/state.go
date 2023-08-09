@@ -27,6 +27,9 @@ func init() {
 }
 
 func JoinNode(node *pb.Node) {
+	if node.Id == id {
+		return
+	}
 	conn, err := client.New(node)
 	if err != nil {
 		log.Println(err)
@@ -34,6 +37,9 @@ func JoinNode(node *pb.Node) {
 	}
 	mut.Lock()
 	defer mut.Unlock()
+	if _, ok := nodes[node.Id]; ok {
+		return
+	}
 	nodes[node.Id] = node
 	conns[node.Id] = conn
 	go handleDisconnect(conn, node.Id)
@@ -41,6 +47,7 @@ func JoinNode(node *pb.Node) {
 }
 
 func handleDisconnect(conn pb.ClusterRpcServiceClient, id string) {
+	disconnected := false
 	for {
 		select {
 		case <-ctx.Done():
@@ -51,12 +58,24 @@ func handleDisconnect(conn pb.ClusterRpcServiceClient, id string) {
 			{
 				_, err := conn.GetId(context.TODO(), &pb.Void{})
 				if err != nil {
-					mut.Lock()
-					delete(nodes, id)
-					delete(conns, id)
-					mut.Unlock()
+					disconnected = true
 					log.Println("connection lost", id)
-					return
+				}
+				if disconnected {
+					nodeList := pb.NodeList{}
+					nodeList.Id = GetId()
+					mut.RLock()
+					for key, value := range nodes {
+						if key == id {
+							continue
+						}
+						nodeList.Nodes = append(nodeList.Nodes, value)
+					}
+					mut.RUnlock()
+					_, err := conns[id].Gossip(context.TODO(), &nodeList)
+					if err == nil {
+						disconnected = false
+					}
 				}
 				<-time.After(time.Second)
 			}
