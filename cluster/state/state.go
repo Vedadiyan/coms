@@ -30,24 +30,28 @@ func JoinNode(node *pb.Node) {
 	if node.Id == id {
 		return
 	}
-	conn, err := client.New(node)
-	if err != nil {
-		log.Println(err)
-		return
-	}
 	mut.Lock()
 	defer mut.Unlock()
 	if _, ok := nodes[node.Id]; ok {
 		return
 	}
+	conn, err := client.New(node)
+	if err != nil {
+		log.Println(err)
+		return
+	}
 	nodes[node.Id] = node
 	conns[node.Id] = conn
 	go handleDisconnect(conn, node.Id)
-	log.Println("joined", node.Port)
+	log.Println("joined", node.Port, node.Id)
 }
 
 func handleDisconnect(conn pb.ClusterRpcServiceClient, id string) {
 	disconnected := false
+	mut.RLock()
+	localConn := conns[id]
+	localNode := nodes[id]
+	mut.RUnlock()
 	for {
 		select {
 		case <-ctx.Done():
@@ -59,14 +63,17 @@ func handleDisconnect(conn pb.ClusterRpcServiceClient, id string) {
 				newId, err := conn.GetId(context.TODO(), &pb.Void{})
 				if err != nil {
 					disconnected = true
+					mut.Lock()
+					delete(nodes, id)
+					delete(conns, id)
+					mut.Unlock()
 					log.Println("connection lost", id)
 				}
 				if disconnected && newId != nil {
 					mut.Lock()
-					nodes[newId.Id] = nodes[id]
-					conns[newId.Id] = conns[id]
-					delete(nodes, id)
-					delete(conns, id)
+					localNode.Id = newId.Id
+					nodes[newId.Id] = localNode
+					conns[newId.Id] = localConn
 					mut.Unlock()
 					nodeList := pb.NodeList{}
 					nodeList.Id = GetId()
@@ -83,7 +90,7 @@ func handleDisconnect(conn pb.ClusterRpcServiceClient, id string) {
 						disconnected = false
 					}
 				}
-				<-time.After(time.Second)
+				<-time.After(time.Millisecond * 25)
 			}
 		}
 	}
@@ -128,7 +135,7 @@ func GossipAll(gossiperId string) {
 		nodeList.Nodes = append(nodeList.Nodes, value)
 	}
 	for key, value := range conns {
-		vv := value
+		conn := value
 		if key == gossiperId {
 			continue
 		}
@@ -136,7 +143,7 @@ func GossipAll(gossiperId string) {
 			continue
 		}
 		cb = append(cb, func() {
-			vv.Gossip(context.TODO(), &nodeList)
+			conn.Gossip(context.TODO(), &nodeList)
 		})
 	}
 	mut.RUnlock()
