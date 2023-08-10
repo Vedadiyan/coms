@@ -103,10 +103,10 @@ func JoinSelf(node *pb.Node) {
 	conns[node.Id] = nil
 }
 
-func AppendNodes(_nodes []*pb.Node) int {
+func AppendNodes(newNodes []*pb.Node) int {
 	mut.RLock()
 	local := make([]*pb.Node, 0)
-	for _, node := range _nodes {
+	for _, node := range newNodes {
 		if _, ok := nodes[node.Id]; ok {
 			continue
 		}
