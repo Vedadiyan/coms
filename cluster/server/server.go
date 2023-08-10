@@ -28,26 +28,27 @@ func (server Server) Gossip(ctx context.Context, nodeList *pb.NodeList) (*pb.Voi
 }
 
 func (server Server) Exchange(ctx context.Context, exchangeReq *pb.ExchangeReq) (*pb.Void, error) {
+	notImplemeted := func() { panic("not implemented") }
 	switch exchangeReq.Event {
 	case "socket:connection":
 		{
-			panic("not implemented")
+			notImplemeted()
 		}
 	case "socket:hangup":
 		{
-			panic("not implemented")
+			notImplemeted()
 		}
 	case "room:creation":
 		{
-			panic("not implemented")
+			notImplemeted()
 		}
 	case "room:join":
 		{
-			panic("not implemented")
+			notImplemeted()
 		}
 	case "room:leave":
 		{
-			panic("not implemented")
+			notImplemeted()
 		}
 	}
 	return &pb.Void{}, nil
