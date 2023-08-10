@@ -103,14 +103,6 @@ func JoinSelf(node *pb.Node) {
 	conns[node.Id] = nil
 }
 
-// func GetNodes(cb func(node *pb.Node, conn pb.ClusterRpcServiceClient)) {
-// 	// mut.RLock()
-// 	// defer mut.RUnlock()
-// 	for key, value := range nodes {
-// 		cb(value, conns[key])
-// 	}
-// }
-
 func AppendNodes(_nodes []*pb.Node) int {
 	mut.RLock()
 	local := make([]*pb.Node, 0)
