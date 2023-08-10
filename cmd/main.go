@@ -12,6 +12,7 @@ import (
 	cluster "github.com/vedadiyan/coms/cluster/proto"
 	"github.com/vedadiyan/coms/cluster/server"
 	"github.com/vedadiyan/coms/cluster/state"
+	"github.com/vedadiyan/coms/socket"
 )
 
 func main() {
@@ -60,5 +61,6 @@ func main() {
 		}
 		server.Route(&routes)
 	}
+	socket.New("127.0.0.1:9000", "/test")
 	fmt.Scanln()
 }

@@ -144,6 +144,31 @@ func GossipAll(gossiperId string) {
 	}
 }
 
+func ExchangeAll(event string, arg []byte) {
+	cb := make([]func(), 0)
+	mut.RLock()
+	nodeList := pb.NodeList{}
+	for _, value := range nodes {
+		nodeList.Nodes = append(nodeList.Nodes, value)
+	}
+	exchangeReq := pb.ExchangeReq{}
+	exchangeReq.Event = event
+	exchangeReq.Arg = arg
+	for key, value := range conns {
+		conn := value
+		if key == id {
+			continue
+		}
+		cb = append(cb, func() {
+			conn.Exchange(context.TODO(), &exchangeReq)
+		})
+	}
+	mut.RUnlock()
+	for _, fn := range cb {
+		fn()
+	}
+}
+
 func GetId() string {
 	return id
 }
