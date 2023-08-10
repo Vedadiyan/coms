@@ -18,12 +18,7 @@ func (server Server) Gossip(ctx context.Context, nodeList *pb.NodeList) (*pb.Voi
 	localNodeList := pb.NodeList{
 		Id: state.GetId(),
 	}
-	for _, node := range nodeList.Nodes {
-		if node.Id == state.GetId() {
-			continue
-		}
-		localNodeList.Nodes = append(localNodeList.Nodes, node)
-	}
+	localNodeList.Nodes = nodeList.Nodes
 	nodesAdded := state.AppendNodes(localNodeList.Nodes)
 	if nodesAdded > 0 {
 		state.GossipAll(nodeList.Id)
@@ -53,15 +48,7 @@ func New(host string) {
 
 func Route(nodeList *pb.NodeList) {
 	for _, node := range nodeList.Nodes {
-		if node.Id == state.GetId() {
-			continue
-		}
 		state.JoinNode(node)
 	}
-	state.GetNodes(func(node *pb.Node, conn pb.ClusterRpcServiceClient) {
-		if node.Id == state.GetId() {
-			return
-		}
-		conn.Gossip(context.TODO(), nodeList)
-	})
+	state.GossipAll(state.GetId())
 }

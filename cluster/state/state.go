@@ -67,7 +67,7 @@ func handleDisconnect(conn pb.ClusterRpcServiceClient, id string) {
 					delete(nodes, id)
 					delete(conns, id)
 					mut.Unlock()
-					log.Println("connection lost", id)
+					// log.Println("connection lost", id)
 				}
 				if disconnected && newId != nil {
 					mut.Lock()
@@ -103,13 +103,13 @@ func JoinSelf(node *pb.Node) {
 	conns[node.Id] = nil
 }
 
-func GetNodes(cb func(node *pb.Node, conn pb.ClusterRpcServiceClient)) {
-	// mut.RLock()
-	// defer mut.RUnlock()
-	for key, value := range nodes {
-		cb(value, conns[key])
-	}
-}
+// func GetNodes(cb func(node *pb.Node, conn pb.ClusterRpcServiceClient)) {
+// 	// mut.RLock()
+// 	// defer mut.RUnlock()
+// 	for key, value := range nodes {
+// 		cb(value, conns[key])
+// 	}
+// }
 
 func AppendNodes(_nodes []*pb.Node) int {
 	mut.RLock()
