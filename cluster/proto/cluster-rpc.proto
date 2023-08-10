@@ -22,7 +22,13 @@ message Id {
     string id = 1;
 }
 
+message ExchangeReq {
+    string event = 1;
+    bytes arg = 2;
+}
+
 service ClusterRpcService {
     rpc Gossip(NodeList) returns(Void);
     rpc GetId(Void) returns(Id);
+    rpc Exchange(ExchangeReq) returns(Void);
 }

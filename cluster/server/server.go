@@ -27,6 +27,32 @@ func (server Server) Gossip(ctx context.Context, nodeList *pb.NodeList) (*pb.Voi
 	return &pb.Void{}, nil
 }
 
+func (server Server) Exchange(ctx context.Context, exchangeReq *pb.ExchangeReq) (*pb.Void, error) {
+	switch exchangeReq.Event {
+	case "socket:connection":
+		{
+			panic("not implemented")
+		}
+	case "socket:hangup":
+		{
+			panic("not implemented")
+		}
+	case "room:creation":
+		{
+			panic("not implemented")
+		}
+	case "room:join":
+		{
+			panic("not implemented")
+		}
+	case "room:leave":
+		{
+			panic("not implemented")
+		}
+	}
+	return &pb.Void{}, nil
+}
+
 func (server Server) GetId(ctx context.Context, _ *pb.Void) (*pb.Id, error) {
 	id := pb.Id{}
 	id.Id = state.GetId()
