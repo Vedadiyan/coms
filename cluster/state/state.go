@@ -27,20 +27,31 @@ func init() {
 }
 
 func JoinNode(node *pb.Node) {
+	if node.Id == id {
+		return
+	}
+	mut.Lock()
+	defer mut.Unlock()
+	if _, ok := nodes[node.Id]; ok {
+		return
+	}
 	conn, err := client.New(node)
 	if err != nil {
 		log.Println(err)
 		return
 	}
-	mut.Lock()
-	defer mut.Unlock()
 	nodes[node.Id] = node
 	conns[node.Id] = conn
 	go handleDisconnect(conn, node.Id)
-	log.Println("joined", node.Port)
+	log.Println("joined", node.Port, node.Id)
 }
 
 func handleDisconnect(conn pb.ClusterRpcServiceClient, id string) {
+	disconnected := false
+	mut.RLock()
+	localConn := conns[id]
+	localNode := nodes[id]
+	mut.RUnlock()
 	for {
 		select {
 		case <-ctx.Done():
@@ -49,16 +60,37 @@ func handleDisconnect(conn pb.ClusterRpcServiceClient, id string) {
 			}
 		default:
 			{
-				_, err := conn.GetId(context.TODO(), &pb.Void{})
+				newId, err := conn.GetId(context.TODO(), &pb.Void{})
 				if err != nil {
+					disconnected = true
 					mut.Lock()
-					defer mut.Unlock()
 					delete(nodes, id)
 					delete(conns, id)
-					log.Panicln("connection lost", id)
-					break
+					mut.Unlock()
+					log.Println("connection lost", id)
 				}
-				<-time.After(time.Second)
+				if disconnected && newId != nil {
+					mut.Lock()
+					localNode.Id = newId.Id
+					nodes[newId.Id] = localNode
+					conns[newId.Id] = localConn
+					mut.Unlock()
+					nodeList := pb.NodeList{}
+					nodeList.Id = GetId()
+					mut.RLock()
+					for key, value := range nodes {
+						if key == newId.Id {
+							continue
+						}
+						nodeList.Nodes = append(nodeList.Nodes, value)
+					}
+					mut.RUnlock()
+					_, err := conns[newId.Id].Gossip(context.TODO(), &nodeList)
+					if err == nil {
+						disconnected = false
+					}
+				}
+				<-time.After(time.Millisecond * 25)
 			}
 		}
 	}
@@ -96,20 +128,27 @@ func AppendNodes(_nodes []*pb.Node) int {
 }
 
 func GossipAll(gossiperId string) {
+	cb := make([]func(), 0)
 	mut.RLock()
-	defer mut.RUnlock()
 	nodeList := pb.NodeList{}
 	for _, value := range nodes {
 		nodeList.Nodes = append(nodeList.Nodes, value)
 	}
 	for key, value := range conns {
+		conn := value
 		if key == gossiperId {
 			continue
 		}
 		if key == id {
 			continue
 		}
-		value.Gossip(context.TODO(), &nodeList)
+		cb = append(cb, func() {
+			conn.Gossip(context.TODO(), &nodeList)
+		})
+	}
+	mut.RUnlock()
+	for _, fn := range cb {
+		fn()
 	}
 }
 
