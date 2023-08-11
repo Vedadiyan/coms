@@ -1,6 +1,7 @@
 package socket
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -14,7 +15,8 @@ import (
 )
 
 type Socket struct {
-	conn *websocket.Conn
+	conn   *websocket.Conn
+	header http.Header
 }
 
 func (socket *Socket) Emit(event string, payload map[string]any) {
@@ -29,10 +31,12 @@ func (socket *Socket) Emit(event string, payload map[string]any) {
 var (
 	mut     sync.RWMutex
 	sockets map[string]*Socket
+	rooms   map[string]map[string]*Socket
 )
 
 func init() {
 	sockets = make(map[string]*Socket)
+	rooms = make(map[string]map[string]*Socket)
 }
 
 func New(host string, hub string) {
@@ -53,6 +57,7 @@ func New(host string, hub string) {
 		state.ExchangeAll("socket:connected", []byte(id))
 		socket := &Socket{}
 		socket.conn = conn
+		socket.header = r.Header
 		mut.Lock()
 		sockets[id] = socket
 		mut.Unlock()
@@ -76,4 +81,66 @@ func socketHandler(socket *Socket) {
 		}
 		fmt.Println(string(message))
 	}
+}
+
+func JoinRoom(id string, socket *Socket, room string) {
+	mut.Lock()
+	defer mut.Unlock()
+	if _, ok := rooms[room]; !ok {
+		rooms[room] = make(map[string]*Socket)
+		state.ExchangeAll("room:created", []byte(room))
+	}
+	rooms[room][id] = socket
+}
+
+func LeaveRoom(id string, room string) {
+	mut.Lock()
+	defer mut.Unlock()
+	if _, ok := rooms[room]; !ok {
+		return
+	}
+	delete(rooms[room], id)
+	if len(rooms[room]) == 0 {
+		delete(rooms, room)
+		state.ExchangeAll("room:deleted", []byte(room))
+	}
+}
+
+func SendToRoom(socket *Socket, room string, message string) {
+	msg := map[string]any{
+		"from":    "",
+		"room":    room,
+		"message": message,
+	}
+	json, err := json.Marshal(msg)
+	if err != nil {
+		log.Println(err.Error())
+		return
+	}
+	state.ExchangeAll("emit:room", json)
+	mut.RLocker()
+	defer mut.RUnlock()
+	for _, sock := range rooms[room] {
+		sock.Emit("message", msg)
+	}
+}
+
+func Send(id string, socket *Socket, message string) {
+	msg := map[string]any{
+		"from":    "",
+		"message": message,
+	}
+	json, err := json.Marshal(msg)
+	if err != nil {
+		log.Println(err.Error())
+		return
+	}
+	state.ExchangeAll("emit:socket", json)
+	mut.RLocker()
+	defer mut.RUnlock()
+	sock, ok := sockets[id]
+	if !ok {
+		return
+	}
+	sock.Emit("message", msg)
 }
