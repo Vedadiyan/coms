@@ -113,7 +113,6 @@ func JoinRoom(socket *Socket, room string) {
 	defer mut.Unlock()
 	if _, ok := rooms[room]; !ok {
 		rooms[room] = make(map[string]*Socket)
-		go state.ExchangeAll("room:created", []byte(room))
 	}
 	rooms[room][socket.id] = socket
 }
@@ -127,7 +126,6 @@ func LeaveRoom(socket *Socket, room string) {
 	delete(rooms[room], socket.id)
 	if len(rooms[room]) == 0 {
 		delete(rooms, room)
-		go state.ExchangeAll("room:deleted", []byte(room))
 	}
 }
 
