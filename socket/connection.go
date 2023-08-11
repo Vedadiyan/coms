@@ -76,11 +76,12 @@ func socketHandler(socket *Socket) {
 		if err != nil {
 			break
 		}
+		message, err := io.ReadAll(reader)
+		if err != nil {
+			log.Println(err.Error())
+		}
 		go func() {
-			message, err := io.ReadAll(reader)
-			if err != nil {
-				log.Println(err.Error())
-			}
+			log.Println(string(message))
 			data := make(map[string]string)
 			err = json.Unmarshal(message, &data)
 			if err != nil {
@@ -141,9 +142,12 @@ func SendToRoom(socket *Socket, room string, message string) {
 		return
 	}
 	go state.ExchangeAll("emit:room", json)
-	mut.RLocker()
+	mut.RLock()
 	defer mut.RUnlock()
 	for _, sock := range rooms[room] {
+		if sock == socket {
+			continue
+		}
 		go sock.Emit("message", msg)
 	}
 }
@@ -159,7 +163,7 @@ func Send(socket *Socket, to string, message string) {
 		return
 	}
 	go state.ExchangeAll("emit:socket", json)
-	mut.RLocker()
+	mut.RLock()
 	defer mut.RUnlock()
 	sock, ok := sockets[to]
 	if !ok {
