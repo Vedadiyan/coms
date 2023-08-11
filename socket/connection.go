@@ -15,6 +15,7 @@ import (
 )
 
 type Socket struct {
+	id     string
 	conn   *websocket.Conn
 	header http.Header
 }
@@ -75,31 +76,55 @@ func socketHandler(socket *Socket) {
 		if err != nil {
 			break
 		}
-		message, err := io.ReadAll(reader)
-		if err != nil {
-			log.Println(err.Error())
-		}
-		fmt.Println(string(message))
+		go func() {
+			message, err := io.ReadAll(reader)
+			if err != nil {
+				log.Println(err.Error())
+			}
+			data := make(map[string]string)
+			err = json.Unmarshal(message, &data)
+			if err != nil {
+				log.Println(err.Error())
+			}
+			switch data["event"] {
+			case "room:join":
+				{
+					JoinRoom(socket, data["room"])
+				}
+			case "room:leave":
+				{
+					LeaveRoom(socket, data["room"])
+				}
+			case "emit:room":
+				{
+					SendToRoom(socket, data["room"], data["message"])
+				}
+			case "emnit:socket":
+				{
+					Send(socket, data["to"], data["message"])
+				}
+			}
+		}()
 	}
 }
 
-func JoinRoom(id string, socket *Socket, room string) {
+func JoinRoom(socket *Socket, room string) {
 	mut.Lock()
 	defer mut.Unlock()
 	if _, ok := rooms[room]; !ok {
 		rooms[room] = make(map[string]*Socket)
 		go state.ExchangeAll("room:created", []byte(room))
 	}
-	rooms[room][id] = socket
+	rooms[room][socket.id] = socket
 }
 
-func LeaveRoom(id string, room string) {
+func LeaveRoom(socket *Socket, room string) {
 	mut.Lock()
 	defer mut.Unlock()
 	if _, ok := rooms[room]; !ok {
 		return
 	}
-	delete(rooms[room], id)
+	delete(rooms[room], socket.id)
 	if len(rooms[room]) == 0 {
 		delete(rooms, room)
 		go state.ExchangeAll("room:deleted", []byte(room))
@@ -125,7 +150,7 @@ func SendToRoom(socket *Socket, room string, message string) {
 	}
 }
 
-func Send(id string, socket *Socket, message string) {
+func Send(socket *Socket, to string, message string) {
 	msg := map[string]any{
 		"from":    "",
 		"message": message,
@@ -138,7 +163,7 @@ func Send(id string, socket *Socket, message string) {
 	go state.ExchangeAll("emit:socket", json)
 	mut.RLocker()
 	defer mut.RUnlock()
-	sock, ok := sockets[id]
+	sock, ok := sockets[to]
 	if !ok {
 		return
 	}
