@@ -88,7 +88,7 @@ func JoinRoom(id string, socket *Socket, room string) {
 	defer mut.Unlock()
 	if _, ok := rooms[room]; !ok {
 		rooms[room] = make(map[string]*Socket)
-		state.ExchangeAll("room:created", []byte(room))
+		go state.ExchangeAll("room:created", []byte(room))
 	}
 	rooms[room][id] = socket
 }
@@ -102,7 +102,7 @@ func LeaveRoom(id string, room string) {
 	delete(rooms[room], id)
 	if len(rooms[room]) == 0 {
 		delete(rooms, room)
-		state.ExchangeAll("room:deleted", []byte(room))
+		go state.ExchangeAll("room:deleted", []byte(room))
 	}
 }
 
@@ -117,11 +117,11 @@ func SendToRoom(socket *Socket, room string, message string) {
 		log.Println(err.Error())
 		return
 	}
-	state.ExchangeAll("emit:room", json)
+	go state.ExchangeAll("emit:room", json)
 	mut.RLocker()
 	defer mut.RUnlock()
 	for _, sock := range rooms[room] {
-		sock.Emit("message", msg)
+		go sock.Emit("message", msg)
 	}
 }
 
@@ -135,12 +135,12 @@ func Send(id string, socket *Socket, message string) {
 		log.Println(err.Error())
 		return
 	}
-	state.ExchangeAll("emit:socket", json)
+	go state.ExchangeAll("emit:socket", json)
 	mut.RLocker()
 	defer mut.RUnlock()
 	sock, ok := sockets[id]
 	if !ok {
 		return
 	}
-	sock.Emit("message", msg)
+	go sock.Emit("message", msg)
 }
