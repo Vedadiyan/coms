@@ -64,6 +64,7 @@ func New(host string, hub string) {
 		mut.Unlock()
 		go socketHandler(socket)
 	})
+	log.Printf("Websocket listening at %s%s\r\n", host, hub)
 	err := http.ListenAndServe(host, nil)
 	if err != nil {
 		panic(err)

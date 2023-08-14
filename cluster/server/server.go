@@ -67,13 +67,13 @@ func New(host string) {
 	}
 	s := grpc.NewServer()
 	pb.RegisterClusterRpcServiceServer(s, &Server{})
-	log.Printf("server listening at %v", lis.Addr())
+	log.Printf("cluster listening at %v", lis.Addr())
 	if err := s.Serve(lis); err != nil {
 		log.Fatalf("failed to serve: %v", err)
 	}
 }
 
-func Route(nodeList *pb.NodeList) {
+func Solicit(nodeList *pb.NodeList) {
 	for _, node := range nodeList.Nodes {
 		state.JoinNode(node)
 	}
