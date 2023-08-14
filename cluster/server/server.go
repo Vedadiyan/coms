@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net"
 
@@ -31,7 +32,7 @@ func (server Server) Gossip(ctx context.Context, nodeList *pb.NodeList) (*pb.Voi
 
 func (server Server) Exchange(ctx context.Context, exchangeReq *pb.ExchangeReq) (*pb.Void, error) {
 	//notImplemeted := func() { panic("not implemented") }
-	mapper := make(map[string]string)
+	mapper := make(map[string]any)
 	err := json.Unmarshal(exchangeReq.Arg, &mapper)
 	if err != nil {
 		log.Println(err.Error())
@@ -40,11 +41,19 @@ func (server Server) Exchange(ctx context.Context, exchangeReq *pb.ExchangeReq) 
 	switch exchangeReq.Event {
 	case "emit:room":
 		{
-			socket.SendToRoom(nil, mapper["room"], mapper["message"])
+			room, ok := mapper["room"].(string)
+			if !ok {
+				return nil, fmt.Errorf("invalid room")
+			}
+			socket.SendToRoom(room, mapper)
 		}
 	case "emit:socket":
 		{
-			socket.Send(nil, mapper["to"], mapper["message"])
+			to, ok := mapper["to"].(string)
+			if !ok {
+				return nil, fmt.Errorf("invalid socket")
+			}
+			socket.Send(to, mapper)
 		}
 	}
 	return &pb.Void{}, nil

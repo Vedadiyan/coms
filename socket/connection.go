@@ -95,26 +95,26 @@ func socketHandler(socket *Socket) {
 			switch data["event"] {
 			case "room:join":
 				{
-					JoinRoom(socket, data["room"])
+					socket.JoinRoom(data["room"])
 				}
 			case "room:leave":
 				{
-					LeaveRoom(socket, data["room"])
+					socket.LeaveRoom(data["room"])
 				}
 			case "emit:room":
 				{
-					SendToRoom(socket, data["room"], data["message"])
+					socket.SendToRoom(data["room"], data["message"])
 				}
 			case "emnit:socket":
 				{
-					Send(socket, data["to"], data["message"])
+					socket.Send(data["to"], data["message"])
 				}
 			}
 		}()
 	}
 }
 
-func JoinRoom(socket *Socket, room string) {
+func (socket *Socket) JoinRoom(room string) {
 	mut.Lock()
 	defer mut.Unlock()
 	if _, ok := rooms[room]; !ok {
@@ -124,7 +124,7 @@ func JoinRoom(socket *Socket, room string) {
 	fmt.Println(socket.id)
 }
 
-func LeaveRoom(socket *Socket, room string) {
+func (socket *Socket) LeaveRoom(room string) {
 	mut.Lock()
 	defer mut.Unlock()
 	if _, ok := rooms[room]; !ok {
@@ -136,7 +136,7 @@ func LeaveRoom(socket *Socket, room string) {
 	}
 }
 
-func SendToRoom(socket *Socket, room string, message string) {
+func (socket *Socket) SendToRoom(room string, message string) {
 	msg := map[string]any{
 		"from":    "",
 		"room":    room,
@@ -160,7 +160,7 @@ func SendToRoom(socket *Socket, room string, message string) {
 	}
 }
 
-func Send(socket *Socket, to string, message string) {
+func (socket *Socket) Send(to string, message string) {
 	msg := map[string]any{
 		"from":    "",
 		"message": message,
@@ -180,4 +180,22 @@ func Send(socket *Socket, to string, message string) {
 		return
 	}
 	go sock.Emit("message", msg)
+}
+
+func SendToRoom(room string, message map[string]any) {
+	mut.RLock()
+	defer mut.RUnlock()
+	for _, sock := range rooms[room] {
+		go sock.Emit("message", message)
+	}
+}
+
+func Send(to string, message map[string]any) {
+	mut.RLock()
+	defer mut.RUnlock()
+	sock, ok := sockets[to]
+	if !ok {
+		return
+	}
+	go sock.Emit("message", message)
 }
