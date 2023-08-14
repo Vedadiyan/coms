@@ -31,17 +31,20 @@ func (server Server) Gossip(ctx context.Context, nodeList *pb.NodeList) (*pb.Voi
 
 func (server Server) Exchange(ctx context.Context, exchangeReq *pb.ExchangeReq) (*pb.Void, error) {
 	//notImplemeted := func() { panic("not implemented") }
-	log.Println("EXCHANGE")
+	mapper := make(map[string]string)
+	err := json.Unmarshal(exchangeReq.Arg, &mapper)
+	if err != nil {
+		log.Println(err.Error())
+		return nil, err
+	}
 	switch exchangeReq.Event {
 	case "emit:room":
 		{
-			mapper := make(map[string]string)
-			err := json.Unmarshal(exchangeReq.Arg, &mapper)
-			if err != nil {
-				log.Println(err.Error())
-				return nil, err
-			}
 			socket.SendToRoom(nil, mapper["room"], mapper["message"])
+		}
+	case "emit:socket":
+		{
+			socket.Send(nil, mapper["to"], mapper["message"])
 		}
 	}
 	return &pb.Void{}, nil
