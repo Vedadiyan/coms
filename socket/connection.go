@@ -77,6 +77,18 @@ func socketHandler(socket *Socket) {
 	for {
 		_, reader, err := socket.conn.NextReader()
 		if err != nil {
+			localRooms := make([]string, 0)
+			mut.RLock()
+			for key := range rooms {
+				localRooms = append(localRooms, key)
+			}
+			mut.RUnlock()
+			mut.Lock()
+			delete(sockets, socket.id)
+			for _, room := range localRooms {
+				delete(rooms[room], socket.id)
+			}
+			mut.Unlock()
 			break
 		}
 		message, err := io.ReadAll(reader)
