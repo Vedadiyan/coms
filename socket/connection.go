@@ -11,7 +11,9 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
+	pb "github.com/vedadiyan/coms/cluster/proto"
 	"github.com/vedadiyan/coms/cluster/state"
+	"github.com/vedadiyan/coms/common"
 )
 
 type Socket struct {
@@ -21,11 +23,11 @@ type Socket struct {
 	mut    sync.Mutex
 }
 
-func (socket *Socket) Emit(event string, payload map[string]any) {
+func (socket *Socket) Emit(msg *pb.ExchangeReq) {
 	data := map[string]any{
-		"event":     event,
+		"event":     msg.Event,
 		"timestamp": time.Now(),
-		"data":      payload,
+		"data":      msg.Message,
 	}
 	socket.mut.Lock()
 	defer socket.mut.Unlock()
@@ -58,7 +60,6 @@ func New(host string, hub string) {
 		if err != nil {
 			panic(err)
 		}
-		state.ExchangeAll("socket:connected", []byte(id))
 		socket := &Socket{}
 		socket.id = id
 		socket.conn = conn
@@ -87,27 +88,27 @@ func socketHandler(socket *Socket) {
 		}
 		go func() {
 			log.Println(string(message))
-			data := make(map[string]string)
+			data := pb.ExchangeReq{}
 			err = json.Unmarshal(message, &data)
 			if err != nil {
 				log.Println(err.Error())
 			}
-			switch data["event"] {
-			case "room:join":
+			switch common.Events(data.Event) {
+			case common.ROOM_JOIN:
 				{
-					socket.JoinRoom(data["room"])
+					socket.JoinRoom(data.To)
 				}
-			case "room:leave":
+			case common.ROOM_LEAVE:
 				{
-					socket.LeaveRoom(data["room"])
+					socket.LeaveRoom(data.To)
 				}
-			case "emit:room":
+			case common.EMIT_ROOM:
 				{
-					socket.SendToRoom(data["room"], data["message"])
+					socket.SendToRoom(data.To, data.Message)
 				}
-			case "emnit:socket":
+			case common.EMIT_SOCKET:
 				{
-					socket.Send(data["to"], data["message"])
+					socket.Send(data.To, data.Message)
 				}
 			}
 		}()
@@ -136,62 +137,55 @@ func (socket *Socket) LeaveRoom(room string) {
 	}
 }
 
-func (socket *Socket) SendToRoom(room string, message string) {
-	msg := map[string]any{
-		"from":    "",
-		"room":    room,
-		"message": message,
+func (socket *Socket) SendToRoom(room string, message []byte) {
+	msg := pb.ExchangeReq{
+		Event:   string(common.EMIT_ROOM),
+		From:    "",
+		To:      room,
+		Message: message,
 	}
-	json, err := json.Marshal(msg)
-	if err != nil {
-		log.Println(err.Error())
-		return
-	}
-	go state.ExchangeAll("emit:room", json)
+	go state.ExchangeAll(&msg)
 	mut.RLock()
 	defer mut.RUnlock()
 	for _, sock := range rooms[room] {
 		if sock == socket {
 			continue
 		}
-		go sock.Emit("message", msg)
+		go sock.Emit(&msg)
 	}
 }
 
-func (socket *Socket) Send(to string, message string) {
-	msg := map[string]any{
-		"from":    "",
-		"message": message,
+func (socket *Socket) Send(to string, message []byte) {
+	msg := pb.ExchangeReq{
+		Event:   string(common.EMIT_ROOM),
+		From:    "",
+		To:      to,
+		Message: message,
 	}
-	json, err := json.Marshal(msg)
-	if err != nil {
-		log.Println(err.Error())
-		return
-	}
-	go state.ExchangeAll("emit:socket", json)
+	go state.ExchangeAll(&msg)
 	mut.RLock()
 	defer mut.RUnlock()
 	sock, ok := sockets[to]
 	if !ok {
 		return
 	}
-	go sock.Emit("message", msg)
+	go sock.Emit(&msg)
 }
 
-func SendToRoom(room string, message map[string]any) {
+func SendToRoom(msg *pb.ExchangeReq) {
 	mut.RLock()
 	defer mut.RUnlock()
-	for _, sock := range rooms[room] {
-		go sock.Emit("message", message)
+	for _, sock := range rooms[msg.To] {
+		go sock.Emit(msg)
 	}
 }
 
-func Send(to string, message map[string]any) {
+func Send(msg *pb.ExchangeReq) {
 	mut.RLock()
 	defer mut.RUnlock()
-	sock, ok := sockets[to]
+	sock, ok := sockets[msg.To]
 	if !ok {
 		return
 	}
-	go sock.Emit("message", message)
+	go sock.Emit(msg)
 }

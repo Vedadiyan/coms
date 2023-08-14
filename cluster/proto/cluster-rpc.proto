@@ -23,8 +23,10 @@ message Id {
 }
 
 message ExchangeReq {
-    string event = 1;
-    bytes arg = 2;
+    string from = 1;
+    string event = 2;
+    string to = 3;
+    bytes message = 4;
 }
 
 service ClusterRpcService {
