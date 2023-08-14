@@ -18,6 +18,7 @@ type Socket struct {
 	id     string
 	conn   *websocket.Conn
 	header http.Header
+	mut    sync.Mutex
 }
 
 func (socket *Socket) Emit(event string, payload map[string]any) {
@@ -26,6 +27,8 @@ func (socket *Socket) Emit(event string, payload map[string]any) {
 		"timestamp": time.Now(),
 		"data":      payload,
 	}
+	socket.mut.Lock()
+	defer socket.mut.Unlock()
 	socket.conn.WriteJSON(data)
 }
 
@@ -57,6 +60,7 @@ func New(host string, hub string) {
 		}
 		state.ExchangeAll("socket:connected", []byte(id))
 		socket := &Socket{}
+		socket.id = id
 		socket.conn = conn
 		socket.header = r.Header
 		mut.Lock()
@@ -117,6 +121,7 @@ func JoinRoom(socket *Socket, room string) {
 		rooms[room] = make(map[string]*Socket)
 	}
 	rooms[room][socket.id] = socket
+	fmt.Println(socket.id)
 }
 
 func LeaveRoom(socket *Socket, room string) {
@@ -142,7 +147,9 @@ func SendToRoom(socket *Socket, room string, message string) {
 		log.Println(err.Error())
 		return
 	}
-	go state.ExchangeAll("emit:room", json)
+	if socket != nil {
+		go state.ExchangeAll("emit:room", json)
+	}
 	mut.RLock()
 	defer mut.RUnlock()
 	for _, sock := range rooms[room] {

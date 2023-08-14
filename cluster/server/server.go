@@ -2,11 +2,13 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"log"
 	"net"
 
 	pb "github.com/vedadiyan/coms/cluster/proto"
 	"github.com/vedadiyan/coms/cluster/state"
+	"github.com/vedadiyan/coms/socket"
 	"google.golang.org/grpc"
 )
 
@@ -28,27 +30,18 @@ func (server Server) Gossip(ctx context.Context, nodeList *pb.NodeList) (*pb.Voi
 }
 
 func (server Server) Exchange(ctx context.Context, exchangeReq *pb.ExchangeReq) (*pb.Void, error) {
-	notImplemeted := func() { panic("not implemented") }
+	//notImplemeted := func() { panic("not implemented") }
+	log.Println("EXCHANGE")
 	switch exchangeReq.Event {
-	case "socket:connection":
+	case "emit:room":
 		{
-			notImplemeted()
-		}
-	case "socket:hangup":
-		{
-			notImplemeted()
-		}
-	case "room:creation":
-		{
-			notImplemeted()
-		}
-	case "room:join":
-		{
-			notImplemeted()
-		}
-	case "room:leave":
-		{
-			notImplemeted()
+			mapper := make(map[string]string)
+			err := json.Unmarshal(exchangeReq.Arg, &mapper)
+			if err != nil {
+				log.Println(err.Error())
+				return nil, err
+			}
+			socket.SendToRoom(nil, mapper["room"], mapper["message"])
 		}
 	}
 	return &pb.Void{}, nil
