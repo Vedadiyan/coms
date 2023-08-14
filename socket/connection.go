@@ -170,7 +170,9 @@ func Send(socket *Socket, to string, message string) {
 		log.Println(err.Error())
 		return
 	}
-	go state.ExchangeAll("emit:socket", json)
+	if socket != nil {
+		go state.ExchangeAll("emit:socket", json)
+	}
 	mut.RLock()
 	defer mut.RUnlock()
 	sock, ok := sockets[to]
