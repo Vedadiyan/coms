@@ -7,13 +7,13 @@ import (
 	"log"
 	"net/http"
 	"sync"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	pb "github.com/vedadiyan/coms/cluster/proto"
 	"github.com/vedadiyan/coms/cluster/state"
 	"github.com/vedadiyan/coms/common"
+	"google.golang.org/protobuf/proto"
 )
 
 type Socket struct {
@@ -23,15 +23,13 @@ type Socket struct {
 	mut    sync.Mutex
 }
 
-func (socket *Socket) Emit(msg *pb.ExchangeReq) {
-	data := map[string]any{
-		"event":     msg.Event,
-		"timestamp": time.Now(),
-		"data":      msg.Message,
-	}
+func (socket *Socket) Emit(data []byte) {
 	socket.mut.Lock()
 	defer socket.mut.Unlock()
-	socket.conn.WriteJSON(data)
+	err := socket.conn.WriteMessage(websocket.BinaryMessage, data)
+	if err != nil {
+		log.Println(err.Error())
+	}
 }
 
 var (
@@ -140,9 +138,14 @@ func (socket *Socket) LeaveRoom(room string) {
 func (socket *Socket) SendToRoom(room string, message []byte) {
 	msg := pb.ExchangeReq{
 		Event:   string(common.EMIT_ROOM),
-		From:    "",
+		From:    state.GetId(),
 		To:      room,
 		Message: message,
+	}
+	bytes, err := proto.Marshal(&msg)
+	if err != nil {
+		log.Println(err.Error())
+		return
 	}
 	go state.ExchangeAll(&msg)
 	mut.RLock()
@@ -151,16 +154,21 @@ func (socket *Socket) SendToRoom(room string, message []byte) {
 		if sock == socket {
 			continue
 		}
-		go sock.Emit(&msg)
+		go sock.Emit(bytes)
 	}
 }
 
 func (socket *Socket) Send(to string, message []byte) {
 	msg := pb.ExchangeReq{
 		Event:   string(common.EMIT_ROOM),
-		From:    "",
+		From:    state.GetId(),
 		To:      to,
 		Message: message,
+	}
+	bytes, err := proto.Marshal(&msg)
+	if err != nil {
+		log.Println(err.Error())
+		return
 	}
 	go state.ExchangeAll(&msg)
 	mut.RLock()
@@ -169,23 +177,33 @@ func (socket *Socket) Send(to string, message []byte) {
 	if !ok {
 		return
 	}
-	go sock.Emit(&msg)
+	go sock.Emit(bytes)
 }
 
 func SendToRoom(msg *pb.ExchangeReq) {
+	bytes, err := proto.Marshal(msg)
+	if err != nil {
+		log.Println(err.Error())
+		return
+	}
 	mut.RLock()
 	defer mut.RUnlock()
 	for _, sock := range rooms[msg.To] {
-		go sock.Emit(msg)
+		go sock.Emit(bytes)
 	}
 }
 
 func Send(msg *pb.ExchangeReq) {
+	bytes, err := proto.Marshal(msg)
+	if err != nil {
+		log.Println(err.Error())
+		return
+	}
 	mut.RLock()
 	defer mut.RUnlock()
 	sock, ok := sockets[msg.To]
 	if !ok {
 		return
 	}
-	go sock.Emit(msg)
+	go sock.Emit(bytes)
 }
