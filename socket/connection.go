@@ -147,9 +147,7 @@ func (socket *Socket) SendToRoom(room string, message string) {
 		log.Println(err.Error())
 		return
 	}
-	if socket != nil {
-		go state.ExchangeAll("emit:room", json)
-	}
+	go state.ExchangeAll("emit:room", json)
 	mut.RLock()
 	defer mut.RUnlock()
 	for _, sock := range rooms[room] {
@@ -170,9 +168,7 @@ func (socket *Socket) Send(to string, message string) {
 		log.Println(err.Error())
 		return
 	}
-	if socket != nil {
-		go state.ExchangeAll("emit:socket", json)
-	}
+	go state.ExchangeAll("emit:socket", json)
 	mut.RLock()
 	defer mut.RUnlock()
 	sock, ok := sockets[to]
