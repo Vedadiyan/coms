@@ -1,0 +1,4 @@
+[
+    {"event": "room:join", "room": "test"},
+    {"event": "emit:room", "room": "test", "message": "ok"}
+]

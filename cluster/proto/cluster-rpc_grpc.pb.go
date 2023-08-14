@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.2.0
 // - protoc             v4.22.2
-// source: cluster-rpc.proto
+// source: cluster/proto/cluster-rpc.proto
 
 package cluster
 
@@ -24,6 +24,7 @@ const _ = grpc.SupportPackageIsVersion7
 type ClusterRpcServiceClient interface {
 	Gossip(ctx context.Context, in *NodeList, opts ...grpc.CallOption) (*Void, error)
 	GetId(ctx context.Context, in *Void, opts ...grpc.CallOption) (*Id, error)
+	Exchange(ctx context.Context, in *ExchangeReq, opts ...grpc.CallOption) (*Void, error)
 }
 
 type clusterRpcServiceClient struct {
@@ -52,12 +53,22 @@ func (c *clusterRpcServiceClient) GetId(ctx context.Context, in *Void, opts ...g
 	return out, nil
 }
 
+func (c *clusterRpcServiceClient) Exchange(ctx context.Context, in *ExchangeReq, opts ...grpc.CallOption) (*Void, error) {
+	out := new(Void)
+	err := c.cc.Invoke(ctx, "/coms.proto.cluster.ClusterRpcService/Exchange", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ClusterRpcServiceServer is the server API for ClusterRpcService service.
 // All implementations must embed UnimplementedClusterRpcServiceServer
 // for forward compatibility
 type ClusterRpcServiceServer interface {
 	Gossip(context.Context, *NodeList) (*Void, error)
 	GetId(context.Context, *Void) (*Id, error)
+	Exchange(context.Context, *ExchangeReq) (*Void, error)
 	mustEmbedUnimplementedClusterRpcServiceServer()
 }
 
@@ -70,6 +81,9 @@ func (UnimplementedClusterRpcServiceServer) Gossip(context.Context, *NodeList) (
 }
 func (UnimplementedClusterRpcServiceServer) GetId(context.Context, *Void) (*Id, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetId not implemented")
+}
+func (UnimplementedClusterRpcServiceServer) Exchange(context.Context, *ExchangeReq) (*Void, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Exchange not implemented")
 }
 func (UnimplementedClusterRpcServiceServer) mustEmbedUnimplementedClusterRpcServiceServer() {}
 
@@ -120,6 +134,24 @@ func _ClusterRpcService_GetId_Handler(srv interface{}, ctx context.Context, dec 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ClusterRpcService_Exchange_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ExchangeReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ClusterRpcServiceServer).Exchange(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/coms.proto.cluster.ClusterRpcService/Exchange",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ClusterRpcServiceServer).Exchange(ctx, req.(*ExchangeReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ClusterRpcService_ServiceDesc is the grpc.ServiceDesc for ClusterRpcService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -135,7 +167,11 @@ var ClusterRpcService_ServiceDesc = grpc.ServiceDesc{
 			MethodName: "GetId",
 			Handler:    _ClusterRpcService_GetId_Handler,
 		},
+		{
+			MethodName: "Exchange",
+			Handler:    _ClusterRpcService_Exchange_Handler,
+		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "cluster-rpc.proto",
+	Metadata: "cluster/proto/cluster-rpc.proto",
 }

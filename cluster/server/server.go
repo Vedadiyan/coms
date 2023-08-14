@@ -7,6 +7,7 @@ import (
 
 	pb "github.com/vedadiyan/coms/cluster/proto"
 	"github.com/vedadiyan/coms/cluster/state"
+	"github.com/vedadiyan/coms/socket"
 	"google.golang.org/grpc"
 )
 
@@ -18,16 +19,26 @@ func (server Server) Gossip(ctx context.Context, nodeList *pb.NodeList) (*pb.Voi
 	localNodeList := pb.NodeList{
 		Id: state.GetId(),
 	}
-	for _, node := range nodeList.Nodes {
-		if node.Id == state.GetId() {
-			continue
-		}
-		localNodeList.Nodes = append(localNodeList.Nodes, node)
-	}
+	localNodeList.Nodes = nodeList.Nodes
 	nodesAdded := state.AppendNodes(localNodeList.Nodes)
 	if nodesAdded > 0 {
 		state.GossipAll(nodeList.Id)
 		state.Print()
+	}
+	return &pb.Void{}, nil
+}
+
+func (server Server) Exchange(ctx context.Context, exchangeReq *pb.ExchangeReq) (*pb.Void, error) {
+	//notImplemeted := func() { panic("not implemented") }
+	switch exchangeReq.Event {
+	case "emit:room":
+		{
+			socket.SendToRoom(exchangeReq)
+		}
+	case "emit:socket":
+		{
+			socket.Send(exchangeReq)
+		}
 	}
 	return &pb.Void{}, nil
 }
@@ -45,23 +56,15 @@ func New(host string) {
 	}
 	s := grpc.NewServer()
 	pb.RegisterClusterRpcServiceServer(s, &Server{})
-	log.Printf("server listening at %v", lis.Addr())
+	log.Printf("cluster listening at %v", lis.Addr())
 	if err := s.Serve(lis); err != nil {
 		log.Fatalf("failed to serve: %v", err)
 	}
 }
 
-func Route(nodeList *pb.NodeList) {
+func Solicit(nodeList *pb.NodeList) {
 	for _, node := range nodeList.Nodes {
-		if node.Id == state.GetId() {
-			continue
-		}
 		state.JoinNode(node)
 	}
-	state.GetNodes(func(node *pb.Node, conn pb.ClusterRpcServiceClient) {
-		if node.Id == state.GetId() {
-			return
-		}
-		conn.Gossip(context.TODO(), nodeList)
-	})
+	state.GossipAll(state.GetId())
 }
