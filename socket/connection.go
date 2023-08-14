@@ -1,7 +1,6 @@
 package socket
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -87,7 +86,7 @@ func socketHandler(socket *Socket) {
 		go func() {
 			log.Println(string(message))
 			data := pb.ExchangeReq{}
-			err = json.Unmarshal(message, &data)
+			err = proto.Unmarshal(message, &data)
 			if err != nil {
 				log.Println(err.Error())
 			}
