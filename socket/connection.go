@@ -40,6 +40,21 @@ func (socket *Socket) Emit(data []byte) {
 	}
 }
 
+func (socket *Socket) Reply(inbox string, status string) {
+	msg := pb.ExchangeReq{
+		Event:   string(common.REPLY),
+		From:    state.GetId(),
+		To:      inbox,
+		Message: []byte(status),
+	}
+	bytes, err := proto.Marshal(&msg)
+	if err != nil {
+		log.Println(err.Error())
+		return
+	}
+	socket.Emit(bytes)
+}
+
 var (
 	_mut     sync.RWMutex
 	_sockets map[string]*Socket
@@ -142,16 +157,6 @@ func socketHandler(socket *Socket) {
 		if err != nil {
 			log.Println(err.Error())
 		}
-		if _options.intercept != nil {
-			next, err := _options.intercept(socket, message)
-			if err != nil {
-				log.Println(err.Error())
-				return
-			}
-			if !next {
-				return
-			}
-		}
 		go func() {
 			log.Println(string(message))
 			data := pb.ExchangeReq{}
@@ -159,18 +164,31 @@ func socketHandler(socket *Socket) {
 			if err != nil {
 				log.Println(err.Error())
 			}
+			if _options.intercept != nil {
+				next, err := _options.intercept(socket, message)
+				if err != nil {
+					log.Println(err.Error())
+					return
+				}
+				if !next {
+					if data.Reply != nil {
+						socket.Reply(*data.Reply, "400")
+					}
+					return
+				}
+			}
 			switch common.Events(data.Event) {
 			case common.GROUP_JOIN:
 				{
-					socket.JoinGroup(data.To)
+					socket.JoinGroup(data.To, data.Reply)
 				}
 			case common.GROUP_LEAVE:
 				{
-					socket.LeaveGroup(data.To)
+					socket.LeaveGroup(data.To, data.Reply)
 				}
 			case common.EMIT_GROUP:
 				{
-					socket.SendToGroup(data.To, data.Message)
+					socket.SendToGroup(data.To, data.Reply, data.Message)
 				}
 			case common.EMIT_SOCKET:
 				{
@@ -196,19 +214,22 @@ func socketHandler(socket *Socket) {
 	}
 }
 
-func (socket *Socket) JoinGroup(group string) {
+func (socket *Socket) JoinGroup(group string, inbox *string) {
 	_mut.Lock()
 	if _, ok := _groups[group]; !ok {
 		_groups[group] = make(map[string]*Socket)
 	}
 	_groups[group][socket.id] = socket
 	_mut.Unlock()
+	if inbox != nil {
+		socket.Reply(*inbox, "200")
+	}
 	if !socket.invisibleMode {
-		socket.sendToGroup(common.GROUP_JOIN, group, []byte("Hello!"))
+		socket.sendToGroup(common.GROUP_JOIN, group, nil, []byte("Hello!"))
 	}
 }
 
-func (socket *Socket) LeaveGroup(group string) {
+func (socket *Socket) LeaveGroup(group string, inbox *string) {
 	_mut.RLock()
 	if _, ok := _groups[group]; !ok {
 		_mut.RUnlock()
@@ -221,16 +242,19 @@ func (socket *Socket) LeaveGroup(group string) {
 		delete(_groups, group)
 	}
 	_mut.Unlock()
+	if inbox != nil {
+		socket.Reply(*inbox, "200")
+	}
 	if !socket.invisibleMode {
-		socket.sendToGroup(common.GROUP_LEAVE, group, []byte("Goodbye!"))
+		socket.sendToGroup(common.GROUP_LEAVE, group, nil, []byte("Goodbye!"))
 	}
 }
 
-func (socket *Socket) SendToGroup(group string, message []byte) {
-	socket.sendToGroup(common.EMIT_GROUP, group, message)
+func (socket *Socket) SendToGroup(group string, inbox *string, message []byte) {
+	socket.sendToGroup(common.EMIT_GROUP, group, inbox, message)
 }
 
-func (socket *Socket) sendToGroup(event common.Events, group string, message []byte) {
+func (socket *Socket) sendToGroup(event common.Events, group string, inbox *string, message []byte) {
 	msg := pb.ExchangeReq{
 		Event:   string(event),
 		From:    state.GetId(),
@@ -251,6 +275,9 @@ func (socket *Socket) sendToGroup(event common.Events, group string, message []b
 		go sock.Emit(bytes)
 	}
 	_mut.RUnlock()
+	if inbox != nil {
+		socket.Reply(*inbox, "200")
+	}
 }
 
 func (socket *Socket) Send(to string, message []byte) {

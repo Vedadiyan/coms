@@ -7,4 +7,5 @@ const (
 	GROUP_LEAVE Events = Events("group:leave")
 	EMIT_GROUP  Events = Events("emit:group")
 	EMIT_SOCKET Events = Events("emit:socket")
+	REPLY       Events = Events("reply")
 )
