@@ -16,16 +16,18 @@ import (
 )
 
 type Options struct {
-	authenticate func(r *http.Request) (bool, error)
-	intercept    func(socket *Socket, message []byte) (bool, error)
-	closeHandler func(socket *Socket)
+	authenticate  func(r *http.Request) (bool, error)
+	intercept     func(socket *Socket, message []byte) (bool, error)
+	closeHandler  func(socket *Socket)
+	invisibleMode func(r *http.Request) (bool, error)
 }
 
 type Socket struct {
-	id     string
-	conn   *websocket.Conn
-	header http.Header
-	mut    sync.Mutex
+	id            string
+	conn          *websocket.Conn
+	header        http.Header
+	mut           sync.Mutex
+	invisibleMode bool
 }
 
 func (socket *Socket) Emit(data []byte) {
@@ -69,6 +71,15 @@ func New(host string, hub string, options ...func(option *Options)) {
 				return
 			}
 		}
+		socket := &Socket{}
+		if _options.invisibleMode != nil {
+			invisibleMode, err := _options.invisibleMode(r)
+			if err != nil {
+				log.Println(err.Error())
+				return
+			}
+			socket.invisibleMode = invisibleMode
+		}
 		id := uuid.New().String()
 		fmt.Println(id)
 		header := http.Header{}
@@ -77,7 +88,6 @@ func New(host string, hub string, options ...func(option *Options)) {
 		if err != nil {
 			panic(err)
 		}
-		socket := &Socket{}
 		socket.id = id
 		socket.conn = conn
 		socket.header = r.Header
@@ -164,7 +174,9 @@ func (socket *Socket) JoinRoom(room string) {
 		_rooms[room] = make(map[string]*Socket)
 	}
 	_rooms[room][socket.id] = socket
-	socket.sendToRoom(common.ROOM_JOIN, room, []byte("Hello!"))
+	if !socket.invisibleMode {
+		socket.sendToRoom(common.ROOM_JOIN, room, []byte("Hello!"))
+	}
 }
 
 func (socket *Socket) LeaveRoom(room string) {
@@ -177,7 +189,9 @@ func (socket *Socket) LeaveRoom(room string) {
 	if len(_rooms[room]) == 0 {
 		delete(_rooms, room)
 	}
-	socket.sendToRoom(common.ROOM_LEAVE, room, []byte("Goodbye!"))
+	if !socket.invisibleMode {
+		socket.sendToRoom(common.ROOM_LEAVE, room, []byte("Goodbye!"))
+	}
 }
 
 func (socket *Socket) SendToRoom(room string, message []byte) {
@@ -272,5 +286,11 @@ func WithInterceptor(interceptor func(socket *Socket, message []byte) (bool, err
 func WithCloseHandler(closeHandler func(socket *Socket)) func(option *Options) {
 	return func(option *Options) {
 		option.closeHandler = closeHandler
+	}
+}
+
+func WithInvisibleMode(invisibleMode func(r *http.Request) (bool, error)) func(option *Options) {
+	return func(option *Options) {
+		option.invisibleMode = invisibleMode
 	}
 }
