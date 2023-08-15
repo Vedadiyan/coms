@@ -15,6 +15,11 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+type Options struct {
+	authenticate func(r *http.Request) (bool, error)
+	intercept    func(socket *Socket, message []byte) (bool, error)
+}
+
 type Socket struct {
 	id     string
 	conn   *websocket.Conn
@@ -32,23 +37,37 @@ func (socket *Socket) Emit(data []byte) {
 }
 
 var (
-	mut     sync.RWMutex
-	sockets map[string]*Socket
-	rooms   map[string]map[string]*Socket
+	_mut     sync.RWMutex
+	_sockets map[string]*Socket
+	_rooms   map[string]map[string]*Socket
+	_options Options
 )
 
 func init() {
-	sockets = make(map[string]*Socket)
-	rooms = make(map[string]map[string]*Socket)
+	_sockets = make(map[string]*Socket)
+	_rooms = make(map[string]map[string]*Socket)
 }
 
-func New(host string, hub string) {
+func New(host string, hub string, options ...func(option *Options)) {
+	for _, option := range options {
+		option(&_options)
+	}
 	upgrader := websocket.Upgrader{
 		CheckOrigin: func(r *http.Request) bool {
 			return true
 		},
 	}
 	http.HandleFunc(hub, func(w http.ResponseWriter, r *http.Request) {
+		if _options.authenticate != nil {
+			next, err := _options.authenticate(r)
+			if err != nil {
+				log.Println(err.Error())
+				return
+			}
+			if !next {
+				return
+			}
+		}
 		id := uuid.New().String()
 		fmt.Println(id)
 		header := http.Header{}
@@ -61,9 +80,9 @@ func New(host string, hub string) {
 		socket.id = id
 		socket.conn = conn
 		socket.header = r.Header
-		mut.Lock()
-		sockets[id] = socket
-		mut.Unlock()
+		_mut.Lock()
+		_sockets[id] = socket
+		_mut.Unlock()
 		go socketHandler(socket)
 	})
 	log.Printf("Websocket listening at %s%s\r\n", host, hub)
@@ -78,22 +97,32 @@ func socketHandler(socket *Socket) {
 		_, reader, err := socket.conn.NextReader()
 		if err != nil {
 			localRooms := make([]string, 0)
-			mut.RLock()
-			for key := range rooms {
+			_mut.RLock()
+			for key := range _rooms {
 				localRooms = append(localRooms, key)
 			}
-			mut.RUnlock()
-			mut.Lock()
-			delete(sockets, socket.id)
+			_mut.RUnlock()
+			_mut.Lock()
+			delete(_sockets, socket.id)
 			for _, room := range localRooms {
-				delete(rooms[room], socket.id)
+				delete(_rooms[room], socket.id)
 			}
-			mut.Unlock()
+			_mut.Unlock()
 			break
 		}
 		message, err := io.ReadAll(reader)
 		if err != nil {
 			log.Println(err.Error())
+		}
+		if _options.intercept != nil {
+			next, err := _options.intercept(socket, message)
+			if err != nil {
+				log.Println(err.Error())
+				return
+			}
+			if !next {
+				return
+			}
 		}
 		go func() {
 			log.Println(string(message))
@@ -125,24 +154,24 @@ func socketHandler(socket *Socket) {
 }
 
 func (socket *Socket) JoinRoom(room string) {
-	mut.Lock()
-	defer mut.Unlock()
-	if _, ok := rooms[room]; !ok {
-		rooms[room] = make(map[string]*Socket)
+	_mut.Lock()
+	defer _mut.Unlock()
+	if _, ok := _rooms[room]; !ok {
+		_rooms[room] = make(map[string]*Socket)
 	}
-	rooms[room][socket.id] = socket
+	_rooms[room][socket.id] = socket
 	fmt.Println(socket.id)
 }
 
 func (socket *Socket) LeaveRoom(room string) {
-	mut.Lock()
-	defer mut.Unlock()
-	if _, ok := rooms[room]; !ok {
+	_mut.Lock()
+	defer _mut.Unlock()
+	if _, ok := _rooms[room]; !ok {
 		return
 	}
-	delete(rooms[room], socket.id)
-	if len(rooms[room]) == 0 {
-		delete(rooms, room)
+	delete(_rooms[room], socket.id)
+	if len(_rooms[room]) == 0 {
+		delete(_rooms, room)
 	}
 }
 
@@ -159,9 +188,9 @@ func (socket *Socket) SendToRoom(room string, message []byte) {
 		return
 	}
 	go state.ExchangeAll(&msg)
-	mut.RLock()
-	defer mut.RUnlock()
-	for _, sock := range rooms[room] {
+	_mut.RLock()
+	defer _mut.RUnlock()
+	for _, sock := range _rooms[room] {
 		if sock == socket {
 			continue
 		}
@@ -182,9 +211,9 @@ func (socket *Socket) Send(to string, message []byte) {
 		return
 	}
 	go state.ExchangeAll(&msg)
-	mut.RLock()
-	defer mut.RUnlock()
-	sock, ok := sockets[to]
+	_mut.RLock()
+	defer _mut.RUnlock()
+	sock, ok := _sockets[to]
 	if !ok {
 		return
 	}
@@ -197,9 +226,9 @@ func SendToRoom(msg *pb.ExchangeReq) {
 		log.Println(err.Error())
 		return
 	}
-	mut.RLock()
-	defer mut.RUnlock()
-	for _, sock := range rooms[msg.To] {
+	_mut.RLock()
+	defer _mut.RUnlock()
+	for _, sock := range _rooms[msg.To] {
 		go sock.Emit(bytes)
 	}
 }
@@ -210,11 +239,23 @@ func Send(msg *pb.ExchangeReq) {
 		log.Println(err.Error())
 		return
 	}
-	mut.RLock()
-	defer mut.RUnlock()
-	sock, ok := sockets[msg.To]
+	_mut.RLock()
+	defer _mut.RUnlock()
+	sock, ok := _sockets[msg.To]
 	if !ok {
 		return
 	}
 	go sock.Emit(bytes)
+}
+
+func WithAuthentication(authenticator func(r *http.Request) (bool, error)) func(option *Options) {
+	return func(option *Options) {
+		option.authenticate = authenticator
+	}
+}
+
+func WithInterceptor(interceptor func(socket *Socket, message []byte) (bool, error)) func(option *Options) {
+	return func(option *Options) {
+		option.intercept = interceptor
+	}
 }
