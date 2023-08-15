@@ -42,9 +42,8 @@ func (socket *Socket) Emit(data []byte) {
 
 func (socket *Socket) Reply(inbox string, status string) {
 	msg := pb.ExchangeReq{
-		Event:   string(common.REPLY),
+		Event:   inbox,
 		From:    state.GetId(),
-		To:      inbox,
 		Message: []byte(status),
 	}
 	bytes, err := proto.Marshal(&msg)
@@ -52,6 +51,7 @@ func (socket *Socket) Reply(inbox string, status string) {
 		log.Println(err.Error())
 		return
 	}
+	fmt.Println("reply", inbox)
 	socket.Emit(bytes)
 }
 
