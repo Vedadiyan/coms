@@ -98,9 +98,23 @@ func New(host string, hub string, options ...func(option *Options)) {
 		go socketHandler(socket)
 	})
 	http.HandleFunc("/monit", func(w http.ResponseWriter, r *http.Request) {
+		_mut.RLock()
+		sockets := make([]string, 0)
+		for key := range _sockets {
+			sockets = append(sockets, key)
+		}
+		groups := make(map[string][]string)
+		for key := range _groups {
+			sockets := make([]string, 0)
+			for key := range _groups[key] {
+				sockets = append(sockets, key)
+			}
+			groups[key] = sockets
+		}
+		_mut.RUnlock()
 		output := map[string]any{
-			"sockets": _sockets,
-			"groups":  _groups,
+			"sockets": sockets,
+			"groups":  groups,
 		}
 		json, err := json.Marshal(output)
 		if err != nil {
@@ -184,26 +198,29 @@ func socketHandler(socket *Socket) {
 
 func (socket *Socket) JoinGroup(group string) {
 	_mut.Lock()
-	defer _mut.Unlock()
 	if _, ok := _groups[group]; !ok {
 		_groups[group] = make(map[string]*Socket)
 	}
 	_groups[group][socket.id] = socket
+	_mut.Unlock()
 	if !socket.invisibleMode {
 		socket.sendToGroup(common.GROUP_JOIN, group, []byte("Hello!"))
 	}
 }
 
 func (socket *Socket) LeaveGroup(group string) {
-	_mut.Lock()
-	defer _mut.Unlock()
+	_mut.RLock()
 	if _, ok := _groups[group]; !ok {
+		_mut.RUnlock()
 		return
 	}
+	_mut.RUnlock()
+	_mut.Lock()
 	delete(_groups[group], socket.id)
 	if len(_groups[group]) == 0 {
 		delete(_groups, group)
 	}
+	_mut.Unlock()
 	if !socket.invisibleMode {
 		socket.sendToGroup(common.GROUP_LEAVE, group, []byte("Goodbye!"))
 	}
@@ -227,13 +244,13 @@ func (socket *Socket) sendToGroup(event common.Events, group string, message []b
 	}
 	go state.ExchangeAll(&msg)
 	_mut.RLock()
-	defer _mut.RUnlock()
 	for _, sock := range _groups[group] {
 		if sock == socket {
 			continue
 		}
 		go sock.Emit(bytes)
 	}
+	_mut.RUnlock()
 }
 
 func (socket *Socket) Send(to string, message []byte) {
