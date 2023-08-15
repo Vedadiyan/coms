@@ -1,6 +1,7 @@
 package socket
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -95,6 +96,20 @@ func New(host string, hub string, options ...func(option *Options)) {
 		_sockets[id] = socket
 		_mut.Unlock()
 		go socketHandler(socket)
+	})
+	http.HandleFunc("/monit", func(w http.ResponseWriter, r *http.Request) {
+		output := map[string]any{
+			"sockets": _sockets,
+			"groups":  _groups,
+		}
+		json, err := json.Marshal(output)
+		if err != nil {
+			w.Header().Add("tatus", "500")
+			w.Write([]byte(err.Error()))
+			return
+		}
+		w.Header().Add("content-type", "application/json")
+		w.Write(json)
 	})
 	log.Printf("Websocket listening at %s%s\r\n", host, hub)
 	err := http.ListenAndServe(host, nil)
