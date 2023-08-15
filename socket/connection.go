@@ -18,6 +18,7 @@ import (
 type Options struct {
 	authenticate func(r *http.Request) (bool, error)
 	intercept    func(socket *Socket, message []byte) (bool, error)
+	closeHandler func(socket *Socket)
 }
 
 type Socket struct {
@@ -96,18 +97,6 @@ func socketHandler(socket *Socket) {
 	for {
 		_, reader, err := socket.conn.NextReader()
 		if err != nil {
-			localRooms := make([]string, 0)
-			_mut.RLock()
-			for key := range _rooms {
-				localRooms = append(localRooms, key)
-			}
-			_mut.RUnlock()
-			_mut.Lock()
-			delete(_sockets, socket.id)
-			for _, room := range localRooms {
-				delete(_rooms[room], socket.id)
-			}
-			_mut.Unlock()
 			break
 		}
 		message, err := io.ReadAll(reader)
@@ -150,6 +139,21 @@ func socketHandler(socket *Socket) {
 				}
 			}
 		}()
+	}
+	localRooms := make([]string, 0)
+	_mut.RLock()
+	for key := range _rooms {
+		localRooms = append(localRooms, key)
+	}
+	_mut.RUnlock()
+	_mut.Lock()
+	delete(_sockets, socket.id)
+	for _, room := range localRooms {
+		delete(_rooms[room], socket.id)
+	}
+	_mut.Unlock()
+	if _options.closeHandler != nil {
+		_options.closeHandler(socket)
 	}
 }
 
@@ -257,5 +261,11 @@ func WithAuthentication(authenticator func(r *http.Request) (bool, error)) func(
 func WithInterceptor(interceptor func(socket *Socket, message []byte) (bool, error)) func(option *Options) {
 	return func(option *Options) {
 		option.intercept = interceptor
+	}
+}
+
+func WithCloseHandler(closeHandler func(socket *Socket)) func(option *Options) {
+	return func(option *Options) {
+		option.closeHandler = closeHandler
 	}
 }
