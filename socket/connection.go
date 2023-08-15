@@ -42,13 +42,13 @@ func (socket *Socket) Emit(data []byte) {
 var (
 	_mut     sync.RWMutex
 	_sockets map[string]*Socket
-	_rooms   map[string]map[string]*Socket
+	_groups  map[string]map[string]*Socket
 	_options Options
 )
 
 func init() {
 	_sockets = make(map[string]*Socket)
-	_rooms = make(map[string]map[string]*Socket)
+	_groups = make(map[string]map[string]*Socket)
 }
 
 func New(host string, hub string, options ...func(option *Options)) {
@@ -131,17 +131,17 @@ func socketHandler(socket *Socket) {
 				log.Println(err.Error())
 			}
 			switch common.Events(data.Event) {
-			case common.ROOM_JOIN:
+			case common.GROUP_JOIN:
 				{
-					socket.JoinRoom(data.To)
+					socket.JoinGroup(data.To)
 				}
-			case common.ROOM_LEAVE:
+			case common.GROUP_LEAVE:
 				{
-					socket.LeaveRoom(data.To)
+					socket.LeaveGroup(data.To)
 				}
-			case common.EMIT_ROOM:
+			case common.EMIT_GROUP:
 				{
-					socket.SendToRoom(data.To, data.Message)
+					socket.SendToGroup(data.To, data.Message)
 				}
 			case common.EMIT_SOCKET:
 				{
@@ -150,16 +150,16 @@ func socketHandler(socket *Socket) {
 			}
 		}()
 	}
-	localRooms := make([]string, 0)
+	localGroups := make([]string, 0)
 	_mut.RLock()
-	for key := range _rooms {
-		localRooms = append(localRooms, key)
+	for key := range _groups {
+		localGroups = append(localGroups, key)
 	}
 	_mut.RUnlock()
 	_mut.Lock()
 	delete(_sockets, socket.id)
-	for _, room := range localRooms {
-		delete(_rooms[room], socket.id)
+	for _, group := range localGroups {
+		delete(_groups[group], socket.id)
 	}
 	_mut.Unlock()
 	if _options.closeHandler != nil {
@@ -167,42 +167,42 @@ func socketHandler(socket *Socket) {
 	}
 }
 
-func (socket *Socket) JoinRoom(room string) {
+func (socket *Socket) JoinGroup(group string) {
 	_mut.Lock()
 	defer _mut.Unlock()
-	if _, ok := _rooms[room]; !ok {
-		_rooms[room] = make(map[string]*Socket)
+	if _, ok := _groups[group]; !ok {
+		_groups[group] = make(map[string]*Socket)
 	}
-	_rooms[room][socket.id] = socket
+	_groups[group][socket.id] = socket
 	if !socket.invisibleMode {
-		socket.sendToRoom(common.ROOM_JOIN, room, []byte("Hello!"))
+		socket.sendToGroup(common.GROUP_JOIN, group, []byte("Hello!"))
 	}
 }
 
-func (socket *Socket) LeaveRoom(room string) {
+func (socket *Socket) LeaveGroup(group string) {
 	_mut.Lock()
 	defer _mut.Unlock()
-	if _, ok := _rooms[room]; !ok {
+	if _, ok := _groups[group]; !ok {
 		return
 	}
-	delete(_rooms[room], socket.id)
-	if len(_rooms[room]) == 0 {
-		delete(_rooms, room)
+	delete(_groups[group], socket.id)
+	if len(_groups[group]) == 0 {
+		delete(_groups, group)
 	}
 	if !socket.invisibleMode {
-		socket.sendToRoom(common.ROOM_LEAVE, room, []byte("Goodbye!"))
+		socket.sendToGroup(common.GROUP_LEAVE, group, []byte("Goodbye!"))
 	}
 }
 
-func (socket *Socket) SendToRoom(room string, message []byte) {
-	socket.sendToRoom(common.EMIT_ROOM, room, message)
+func (socket *Socket) SendToGroup(group string, message []byte) {
+	socket.sendToGroup(common.EMIT_GROUP, group, message)
 }
 
-func (socket *Socket) sendToRoom(event common.Events, room string, message []byte) {
+func (socket *Socket) sendToGroup(event common.Events, group string, message []byte) {
 	msg := pb.ExchangeReq{
 		Event:   string(event),
 		From:    state.GetId(),
-		To:      room,
+		To:      group,
 		Message: message,
 	}
 	bytes, err := proto.Marshal(&msg)
@@ -213,7 +213,7 @@ func (socket *Socket) sendToRoom(event common.Events, room string, message []byt
 	go state.ExchangeAll(&msg)
 	_mut.RLock()
 	defer _mut.RUnlock()
-	for _, sock := range _rooms[room] {
+	for _, sock := range _groups[group] {
 		if sock == socket {
 			continue
 		}
@@ -223,7 +223,7 @@ func (socket *Socket) sendToRoom(event common.Events, room string, message []byt
 
 func (socket *Socket) Send(to string, message []byte) {
 	msg := pb.ExchangeReq{
-		Event:   string(common.EMIT_ROOM),
+		Event:   string(common.EMIT_GROUP),
 		From:    state.GetId(),
 		To:      to,
 		Message: message,
@@ -243,7 +243,7 @@ func (socket *Socket) Send(to string, message []byte) {
 	go sock.Emit(bytes)
 }
 
-func SendToRoom(msg *pb.ExchangeReq) {
+func SendToGroup(msg *pb.ExchangeReq) {
 	bytes, err := proto.Marshal(msg)
 	if err != nil {
 		log.Println(err.Error())
@@ -251,7 +251,7 @@ func SendToRoom(msg *pb.ExchangeReq) {
 	}
 	_mut.RLock()
 	defer _mut.RUnlock()
-	for _, sock := range _rooms[msg.To] {
+	for _, sock := range _groups[msg.To] {
 		go sock.Emit(bytes)
 	}
 }
