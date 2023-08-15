@@ -164,7 +164,7 @@ func (socket *Socket) JoinRoom(room string) {
 		_rooms[room] = make(map[string]*Socket)
 	}
 	_rooms[room][socket.id] = socket
-	fmt.Println(socket.id)
+	socket.sendToRoom(common.ROOM_JOIN, room, []byte("Hello!"))
 }
 
 func (socket *Socket) LeaveRoom(room string) {
@@ -177,11 +177,16 @@ func (socket *Socket) LeaveRoom(room string) {
 	if len(_rooms[room]) == 0 {
 		delete(_rooms, room)
 	}
+	socket.sendToRoom(common.ROOM_LEAVE, room, []byte("Goodbye!"))
 }
 
 func (socket *Socket) SendToRoom(room string, message []byte) {
+	socket.sendToRoom(common.EMIT_ROOM, room, message)
+}
+
+func (socket *Socket) sendToRoom(event common.Events, room string, message []byte) {
 	msg := pb.ExchangeReq{
-		Event:   string(common.EMIT_ROOM),
+		Event:   string(event),
 		From:    state.GetId(),
 		To:      room,
 		Message: message,
