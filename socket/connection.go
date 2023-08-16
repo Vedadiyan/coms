@@ -51,7 +51,6 @@ func (socket *Socket) Reply(inbox string, status string) {
 		log.Println(err.Error())
 		return
 	}
-	fmt.Println("reply", inbox)
 	socket.Emit(bytes)
 }
 
@@ -158,7 +157,6 @@ func socketHandler(socket *Socket) {
 			log.Println(err.Error())
 		}
 		go func() {
-			log.Println(string(message))
 			data := pb.ExchangeReq{}
 			err = proto.Unmarshal(message, &data)
 			if err != nil {
