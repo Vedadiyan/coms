@@ -54,6 +54,10 @@ func (socket *Socket) Reply(inbox string, status string) {
 	socket.Emit(bytes)
 }
 
+func (socket *Socket) Id() string {
+	return socket.id
+}
+
 var (
 	_mut     sync.RWMutex
 	_sockets map[string]*Socket
