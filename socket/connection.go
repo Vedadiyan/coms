@@ -18,7 +18,7 @@ import (
 
 type Options struct {
 	authenticate  func(r *http.Request) (bool, error)
-	intercept     func(socket *Socket, message []byte) (bool, error)
+	intercept     func(socket *Socket, message *pb.ExchangeReq) (bool, error)
 	closeHandler  func(socket *Socket)
 	invisibleMode func(r *http.Request) (bool, error)
 }
@@ -167,7 +167,7 @@ func socketHandler(socket *Socket) {
 				log.Println(err.Error())
 			}
 			if _options.intercept != nil {
-				next, err := _options.intercept(socket, message)
+				next, err := _options.intercept(socket, &data)
 				if err != nil {
 					log.Println(err.Error())
 					return
@@ -338,7 +338,7 @@ func WithAuthentication(authenticator func(r *http.Request) (bool, error)) func(
 	}
 }
 
-func WithInterceptor(interceptor func(socket *Socket, message []byte) (bool, error)) func(option *Options) {
+func WithInterceptor(interceptor func(socket *Socket, message *pb.ExchangeReq) (bool, error)) func(option *Options) {
 	return func(option *Options) {
 		option.intercept = interceptor
 	}
