@@ -31,9 +31,9 @@ func (server Server) Gossip(ctx context.Context, nodeList *pb.NodeList) (*pb.Voi
 func (server Server) Exchange(ctx context.Context, exchangeReq *pb.ExchangeReq) (*pb.Void, error) {
 	//notImplemeted := func() { panic("not implemented") }
 	switch exchangeReq.Event {
-	case "emit:room":
+	case "emit:group":
 		{
-			socket.SendToRoom(exchangeReq)
+			socket.SendToGroup(exchangeReq)
 		}
 	case "emit:socket":
 		{

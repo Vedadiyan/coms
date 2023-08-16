@@ -3,8 +3,9 @@ package common
 type Events string
 
 const (
-	ROOM_JOIN   Events = Events("room:join")
-	ROOM_LEAVE  Events = Events("room:leave")
-	EMIT_ROOM   Events = Events("emit:room")
+	GROUP_JOIN  Events = Events("group:join")
+	GROUP_LEAVE Events = Events("group:leave")
+	EMIT_GROUP  Events = Events("emit:group")
 	EMIT_SOCKET Events = Events("emit:socket")
+	REPLY       Events = Events("reply")
 )

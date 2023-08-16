@@ -26,7 +26,8 @@ message ExchangeReq {
     string from = 1;
     string event = 2;
     string to = 3;
-    bytes message = 4;
+    optional string reply = 4;
+    bytes message = 5;
 }
 
 service ClusterRpcService {
