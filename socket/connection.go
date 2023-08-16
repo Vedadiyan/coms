@@ -29,6 +29,7 @@ type Socket struct {
 	header        http.Header
 	mut           sync.Mutex
 	invisibleMode bool
+	claims        map[string]any
 }
 
 func (socket *Socket) Emit(data []byte) {
@@ -56,6 +57,15 @@ func (socket *Socket) Reply(inbox string, status string) {
 
 func (socket *Socket) Id() string {
 	return socket.id
+}
+
+func (socket *Socket) SetClaim(key string, value any) {
+	socket.claims[key] = value
+}
+
+func (socket *Socket) GetClaim(key string) (any, bool) {
+	value, ok := socket.claims[key]
+	return value, ok
 }
 
 var (
@@ -110,6 +120,7 @@ func New(host string, hub string, options ...func(option *Options)) {
 		socket.id = id
 		socket.conn = conn
 		socket.header = r.Header
+		socket.claims = make(map[string]any)
 		_mut.Lock()
 		_sockets[id] = socket
 		_mut.Unlock()
