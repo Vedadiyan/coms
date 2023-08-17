@@ -25,6 +25,7 @@ type Options struct {
 
 type Socket struct {
 	id            string
+	ip            string
 	conn          *websocket.Conn
 	header        http.Header
 	mut           sync.Mutex
@@ -57,6 +58,10 @@ func (socket *Socket) Reply(inbox string, status string) {
 
 func (socket *Socket) Id() string {
 	return socket.id
+}
+
+func (socket *Socket) IP() string {
+	return socket.ip
 }
 
 func (socket *Socket) SetClaim(key string, value any) {
@@ -118,6 +123,7 @@ func New(host string, hub string, options ...func(option *Options)) {
 			panic(err)
 		}
 		socket.id = id
+		socket.ip = r.RemoteAddr
 		socket.conn = conn
 		socket.header = r.Header
 		socket.claims = make(map[string]any)
