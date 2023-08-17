@@ -27,7 +27,7 @@ func Bootstrap(port int, clusterHost *string, clusterUrls []string) error {
 		self.Host = selfHostValues[0]
 		self.Port = int32(selfHostPort)
 		state.JoinSelf(&self)
-		go server.New(*clusterHost)
+		server.New(context.TODO(), *clusterHost)
 		if len(clusterUrls) > 0 {
 			log.Println("soliciting routes...")
 			routes := cluster.NodeList{}
@@ -60,6 +60,6 @@ func Bootstrap(port int, clusterHost *string, clusterUrls []string) error {
 		}
 		log.Println("cluster started")
 	}
-	socket.New(fmt.Sprintf("127.0.0.1:%d", port), "/comms")
+	socket.New(context.TODO(), fmt.Sprintf("127.0.0.1:%d", port), "/comms")
 	return nil
 }

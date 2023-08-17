@@ -1,6 +1,7 @@
 package socket
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -85,7 +86,7 @@ func init() {
 	_groups = make(map[string]map[string]*Socket)
 }
 
-func New(host string, hub string, options ...func(option *Options)) {
+func New(ctx context.Context, host string, hub string, options ...func(option *Options)) {
 	for _, option := range options {
 		option(&_options)
 	}
@@ -94,7 +95,8 @@ func New(host string, hub string, options ...func(option *Options)) {
 			return true
 		},
 	}
-	http.HandleFunc(hub, func(w http.ResponseWriter, r *http.Request) {
+	serveMux := http.NewServeMux()
+	serveMux.HandleFunc(hub, func(w http.ResponseWriter, r *http.Request) {
 		if _options.authenticate != nil {
 			next, err := _options.authenticate(r)
 			if err != nil {
@@ -132,7 +134,8 @@ func New(host string, hub string, options ...func(option *Options)) {
 		_mut.Unlock()
 		go socketHandler(socket)
 	})
-	http.HandleFunc("/monit", func(w http.ResponseWriter, r *http.Request) {
+
+	serveMux.HandleFunc("/monit", func(w http.ResponseWriter, r *http.Request) {
 		_mut.RLock()
 		sockets := make([]string, 0)
 		for key := range _sockets {
@@ -161,10 +164,20 @@ func New(host string, hub string, options ...func(option *Options)) {
 		w.Write(json)
 	})
 	log.Printf("Websocket listening at %s%s\r\n", host, hub)
-	err := http.ListenAndServe(host, nil)
+	server := http.Server{}
+	server.Addr = host
+	server.Handler = serveMux
+	err := server.ListenAndServe()
 	if err != nil {
 		panic(err)
 	}
+	go func() {
+		<-ctx.Done()
+		err := server.Shutdown(context.TODO())
+		if err != nil {
+			panic(err)
+		}
+	}()
 }
 
 func socketHandler(socket *Socket) {
@@ -197,11 +210,11 @@ func socketHandler(socket *Socket) {
 				}
 			}
 			switch common.Events(data.Event) {
-			case common.GROUP_JOIN:
+			case common.JOIN_GROUP:
 				{
 					socket.JoinGroup(data.To, data.Reply)
 				}
-			case common.GROUP_LEAVE:
+			case common.LEAVE_GROUP:
 				{
 					socket.LeaveGroup(data.To, data.Reply)
 				}
@@ -244,7 +257,7 @@ func (socket *Socket) JoinGroup(group string, inbox *string) {
 		socket.Reply(*inbox, "200")
 	}
 	if !socket.invisibleMode {
-		socket.sendToGroup(common.GROUP_JOIN, group, nil, []byte("Hello!"))
+		socket.sendToGroup(common.JOIN_GROUP, group, nil, []byte("Hello!"))
 	}
 }
 
@@ -265,7 +278,7 @@ func (socket *Socket) LeaveGroup(group string, inbox *string) {
 		socket.Reply(*inbox, "200")
 	}
 	if !socket.invisibleMode {
-		socket.sendToGroup(common.GROUP_LEAVE, group, nil, []byte("Goodbye!"))
+		socket.sendToGroup(common.LEAVE_GROUP, group, nil, []byte("Goodbye!"))
 	}
 }
 
