@@ -156,7 +156,7 @@ func New(ctx context.Context, host string, hub string, options ...func(option *O
 		}
 		json, err := json.Marshal(output)
 		if err != nil {
-			w.Header().Add("tatus", "500")
+			w.Header().Add("status", "500")
 			w.Write([]byte(err.Error()))
 			return
 		}
