@@ -52,7 +52,52 @@ func JoinNode(node *pb.Node) {
 	log.Println("joined", node.Port, node.Id)
 }
 
+func JoinNodeInit(node *pb.Node) {
+	if node.Id == id {
+		return
+	}
+	mut.Lock()
+	defer mut.Unlock()
+	if _, ok := nodes[node.Id]; ok {
+		return
+	}
+	master, conn, stat, closer, err := client.New(node)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	if len(node.Id) == 0 {
+		id, err := conn.GetId(context.TODO(), &pb.Void{})
+		if err != nil {
+			return
+		}
+		node.Id = id.Id
+	}
+	nodes[node.Id] = node
+	conns[node.Id] = conn
+	go HandleDisconnectInit(master, conn, stat, closer, node.Id)
+	log.Println("joined", node.Port, node.Id)
+}
+
 func HandleDisconnect(master *grpc.ClientConn, conn pb.ClusterRpcServiceClient, stat <-chan client.Stat, closer func() error, id string) {
+LOOP:
+	for stat := range stat {
+		switch stat {
+		case client.DISCONNECT:
+			{
+				mut.Lock()
+				delete(nodes, id)
+				delete(conns, id)
+				mut.Unlock()
+				closer()
+				PrintCustom("[LEAVE] nodes connected")
+				break LOOP
+			}
+		}
+	}
+}
+
+func HandleDisconnectInit(master *grpc.ClientConn, conn pb.ClusterRpcServiceClient, stat <-chan client.Stat, closer func() error, id string) {
 	localId := id
 	mut.RLock()
 	localConn := conns[id]

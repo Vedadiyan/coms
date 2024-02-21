@@ -25,7 +25,7 @@ const (
 )
 
 func New(node *pb.Node) (*grpc.ClientConn, pb.ClusterRpcServiceClient, <-chan Stat, func() error, error) {
-	stat := make(chan Stat, 100)
+	stat := make(chan Stat, 1)
 	var conn *grpc.ClientConn
 	var err error
 	fmt.Printf("%s:%d\r\n", node.Host, node.Port)

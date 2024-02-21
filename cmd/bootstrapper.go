@@ -42,7 +42,7 @@ func Bootstrap(port int, clusterHost *string, clusterUrls []string) error {
 					Host: hostValues[0],
 					Port: int32(port),
 				}
-				state.JoinNode(node)
+				state.JoinNodeInit(node)
 				routes.Nodes = append(routes.Nodes, node)
 			}
 			server.Solicit(&routes)
