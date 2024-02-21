@@ -67,7 +67,7 @@ func HandleDisconnect(master *grpc.ClientConn, conn pb.ClusterRpcServiceClient, 
 				delete(conns, localId)
 				mut.Unlock()
 				master.Connect()
-				Print()
+				PrintCustom("[DISCONNECT] nodes connected")
 			}
 		case client.CONNECT:
 			{
@@ -98,7 +98,7 @@ func HandleDisconnect(master *grpc.ClientConn, conn pb.ClusterRpcServiceClient, 
 					log.Println(err)
 					continue
 				}
-				Print()
+				PrintCustom("[RECONNECT] nodes connected")
 			}
 		}
 	}
@@ -182,4 +182,10 @@ func Print() {
 	mut.RLock()
 	defer mut.RUnlock()
 	log.Println("nodes connected", len(nodes)-1)
+}
+
+func PrintCustom(message string) {
+	mut.RLock()
+	defer mut.RUnlock()
+	log.Println(message, len(nodes)-1)
 }

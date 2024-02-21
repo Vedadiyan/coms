@@ -23,7 +23,7 @@ func (server Server) Gossip(ctx context.Context, nodeList *pb.NodeList) (*pb.Voi
 	nodesAdded := state.AppendNodes(localNodeList.Nodes)
 	if nodesAdded > 0 {
 		state.GossipAll(nodeList.Id)
-		state.Print()
+		state.PrintCustom("[JOIN] nodes connected")
 	}
 	return &pb.Void{}, nil
 }
