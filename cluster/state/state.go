@@ -8,6 +8,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/vedadiyan/coms/cluster/client"
 	pb "github.com/vedadiyan/coms/cluster/proto"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/connectivity"
 )
 
 var (
@@ -32,7 +34,7 @@ func JoinNode(node *pb.Node) {
 	if _, ok := nodes[node.Id]; ok {
 		return
 	}
-	conn, stat, closer, err := client.New(node)
+	master, conn, stat, closer, err := client.New(node)
 	if err != nil {
 		log.Println(err)
 		return
@@ -46,11 +48,12 @@ func JoinNode(node *pb.Node) {
 	}
 	nodes[node.Id] = node
 	conns[node.Id] = conn
-	go HandleDisconnect(conn, stat, closer, node.Id)
+	go HandleDisconnect(master, conn, stat, closer, node.Id)
 	log.Println("joined", node.Port, node.Id)
 }
 
-func HandleDisconnect(conn pb.ClusterRpcServiceClient, stat <-chan client.Stat, closer func() error, id string) {
+func HandleDisconnect(master *grpc.ClientConn, conn pb.ClusterRpcServiceClient, stat <-chan client.Stat, closer func() error, id string) {
+	localId := id
 	mut.RLock()
 	localConn := conns[id]
 	localNode := nodes[id]
@@ -60,21 +63,24 @@ func HandleDisconnect(conn pb.ClusterRpcServiceClient, stat <-chan client.Stat, 
 		case client.DISCONNECT:
 			{
 				mut.Lock()
-				delete(nodes, id)
+				delete(nodes, localId)
+				delete(conns, localId)
 				mut.Unlock()
+				master.Connect()
 				Print()
 			}
 		case client.CONNECT:
 			{
+				master.WaitForStateChange(context.TODO(), connectivity.TransientFailure)
 				newId, err := conn.GetId(context.TODO(), &pb.Void{})
 				if err != nil {
 					log.Println(err)
 					continue
 				}
+				localId = newId.Id
 				mut.Lock()
 				localNode.Id = newId.Id
 				nodes[newId.Id] = localNode
-				delete(conns, id)
 				conns[newId.Id] = localConn
 				mut.Unlock()
 				nodeList := pb.NodeList{}
@@ -92,6 +98,7 @@ func HandleDisconnect(conn pb.ClusterRpcServiceClient, stat <-chan client.Stat, 
 					log.Println(err)
 					continue
 				}
+				Print()
 			}
 		}
 	}
