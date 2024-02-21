@@ -2,9 +2,9 @@ package state
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"sync"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/vedadiyan/coms/cluster/client"
@@ -12,7 +12,6 @@ import (
 )
 
 var (
-	ctx   context.Context
 	id    string
 	mut   sync.RWMutex
 	nodes map[string]*pb.Node
@@ -20,7 +19,6 @@ var (
 )
 
 func init() {
-	ctx = context.TODO()
 	nodes = make(map[string]*pb.Node)
 	conns = make(map[string]pb.ClusterRpcServiceClient)
 	id = uuid.New().String()
@@ -35,62 +33,67 @@ func JoinNode(node *pb.Node) {
 	if _, ok := nodes[node.Id]; ok {
 		return
 	}
-	conn, err := client.New(node)
+	conn, stat, closer, err := client.New(node)
 	if err != nil {
 		log.Println(err)
 		return
 	}
 	nodes[node.Id] = node
 	conns[node.Id] = conn
-	go handleDisconnect(conn, node.Id)
+	go handleDisconnect(conn, stat, closer, node.Id)
 	log.Println("joined", node.Port, node.Id)
 }
 
-func handleDisconnect(conn pb.ClusterRpcServiceClient, id string) {
+func handleDisconnect(conn pb.ClusterRpcServiceClient, stat <-chan client.Stat, closer func() error, id string) {
 	disconnected := false
 	mut.RLock()
 	localConn := conns[id]
 	localNode := nodes[id]
 	mut.RUnlock()
-	for {
-		select {
-		case <-ctx.Done():
+	for stat := range stat {
+		switch stat {
+		case client.DISCONNECT:
 			{
-				return
+				mut.Lock()
+				delete(nodes, id)
+				delete(conns, id)
+				mut.Unlock()
+				disconnected = true
+				Print()
 			}
-		default:
+		case client.CONNECT:
 			{
+				if !disconnected {
+					fmt.Println("skip")
+					continue
+				}
 				newId, err := conn.GetId(context.TODO(), &pb.Void{})
 				if err != nil {
-					disconnected = true
-					mut.Lock()
-					delete(nodes, id)
-					delete(conns, id)
-					mut.Unlock()
-					// log.Println("connection lost", id)
+					log.Println(err)
+					continue
 				}
-				if disconnected && newId != nil {
-					mut.Lock()
-					localNode.Id = newId.Id
-					nodes[newId.Id] = localNode
-					conns[newId.Id] = localConn
-					mut.Unlock()
-					nodeList := pb.NodeList{}
-					nodeList.Id = GetId()
-					mut.RLock()
-					for key, value := range nodes {
-						if key == newId.Id {
-							continue
-						}
-						nodeList.Nodes = append(nodeList.Nodes, value)
+				mut.Lock()
+				localNode.Id = newId.Id
+				nodes[newId.Id] = localNode
+				conns[newId.Id] = localConn
+				mut.Unlock()
+				nodeList := pb.NodeList{}
+				nodeList.Id = GetId()
+				mut.RLock()
+				for key, value := range nodes {
+					if key == newId.Id {
+						continue
 					}
-					mut.RUnlock()
-					_, err := conns[newId.Id].Gossip(context.TODO(), &nodeList)
-					if err == nil {
-						disconnected = false
-					}
+					nodeList.Nodes = append(nodeList.Nodes, value)
 				}
-				<-time.After(time.Millisecond * 25)
+				mut.RUnlock()
+				_, err = conns[newId.Id].Gossip(context.TODO(), &nodeList)
+				if err != nil {
+					log.Println(err)
+					continue
+				}
+				disconnected = false
+				Print()
 			}
 		}
 	}

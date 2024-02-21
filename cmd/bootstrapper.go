@@ -43,7 +43,7 @@ func Bootstrap(port int, clusterHost *string, clusterUrls []string) error {
 					Host: hostValues[0],
 					Port: int32(port),
 				}
-				client, err := client.New(node)
+				client, _, closer, err := client.New(node)
 				if err != nil {
 					log.Println(err)
 					continue
@@ -53,6 +53,7 @@ func Bootstrap(port int, clusterHost *string, clusterUrls []string) error {
 					log.Println(err)
 					continue
 				}
+				closer()
 				node.Id = id.Id
 				routes.Nodes = append(routes.Nodes, node)
 			}
