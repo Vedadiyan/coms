@@ -2,7 +2,6 @@ package state
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"sync"
 
@@ -38,14 +37,20 @@ func JoinNode(node *pb.Node) {
 		log.Println(err)
 		return
 	}
+	if len(node.Id) == 0 {
+		id, err := conn.GetId(context.TODO(), &pb.Void{})
+		if err != nil {
+			return
+		}
+		node.Id = id.Id
+	}
 	nodes[node.Id] = node
 	conns[node.Id] = conn
-	go handleDisconnect(conn, stat, closer, node.Id)
+	go HandleDisconnect(conn, stat, closer, node.Id)
 	log.Println("joined", node.Port, node.Id)
 }
 
-func handleDisconnect(conn pb.ClusterRpcServiceClient, stat <-chan client.Stat, closer func() error, id string) {
-	disconnected := false
+func HandleDisconnect(conn pb.ClusterRpcServiceClient, stat <-chan client.Stat, closer func() error, id string) {
 	mut.RLock()
 	localConn := conns[id]
 	localNode := nodes[id]
@@ -56,17 +61,11 @@ func handleDisconnect(conn pb.ClusterRpcServiceClient, stat <-chan client.Stat, 
 			{
 				mut.Lock()
 				delete(nodes, id)
-				delete(conns, id)
 				mut.Unlock()
-				disconnected = true
 				Print()
 			}
 		case client.CONNECT:
 			{
-				if !disconnected {
-					fmt.Println("skip")
-					continue
-				}
 				newId, err := conn.GetId(context.TODO(), &pb.Void{})
 				if err != nil {
 					log.Println(err)
@@ -75,6 +74,7 @@ func handleDisconnect(conn pb.ClusterRpcServiceClient, stat <-chan client.Stat, 
 				mut.Lock()
 				localNode.Id = newId.Id
 				nodes[newId.Id] = localNode
+				delete(conns, id)
 				conns[newId.Id] = localConn
 				mut.Unlock()
 				nodeList := pb.NodeList{}
@@ -92,8 +92,6 @@ func handleDisconnect(conn pb.ClusterRpcServiceClient, stat <-chan client.Stat, 
 					log.Println(err)
 					continue
 				}
-				disconnected = false
-				Print()
 			}
 		}
 	}

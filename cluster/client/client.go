@@ -13,7 +13,9 @@ import (
 type (
 	Stat        int
 	StatHandler struct {
-		Stat chan Stat
+		Stat        chan Stat
+		Conn        *grpc.ClientConn
+		disconnects int
 	}
 )
 
@@ -24,7 +26,10 @@ const (
 
 func New(node *pb.Node) (pb.ClusterRpcServiceClient, <-chan Stat, func() error, error) {
 	stat := make(chan Stat, 1)
-	conn, err := grpc.Dial(fmt.Sprintf("%s:%d", node.Host, node.Port), grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithStatsHandler(StatHandler{Stat: stat}))
+	var conn *grpc.ClientConn
+	var err error
+	fmt.Printf("%s:%d\r\n", node.Host, node.Port)
+	conn, err = grpc.Dial(fmt.Sprintf("%s:%d", node.Host, node.Port), grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithStatsHandler(&StatHandler{Stat: stat, Conn: conn}))
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -40,15 +45,20 @@ func (StatHandler) HandleRPC(context.Context, stats.RPCStats) {
 func (StatHandler) TagConn(ctx context.Context, tag *stats.ConnTagInfo) context.Context {
 	return ctx
 }
-func (statHandler StatHandler) HandleConn(ctx context.Context, stat stats.ConnStats) {
+func (statHandler *StatHandler) HandleConn(ctx context.Context, stat stats.ConnStats) {
 	switch stat.(type) {
 	case *stats.ConnEnd:
 		{
+			fmt.Println("disconnected")
 			statHandler.Stat <- DISCONNECT
+			statHandler.disconnects += 1
 		}
 	case *stats.ConnBegin:
 		{
-			statHandler.Stat <- CONNECT
+			if statHandler.disconnects > 0 {
+				fmt.Println("connected back")
+				statHandler.Stat <- CONNECT
+			}
 		}
 	}
 }

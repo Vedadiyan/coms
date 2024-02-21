@@ -7,7 +7,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/vedadiyan/coms/cluster/client"
 	cluster "github.com/vedadiyan/coms/cluster/proto"
 	"github.com/vedadiyan/coms/cluster/server"
 	"github.com/vedadiyan/coms/cluster/state"
@@ -43,18 +42,7 @@ func Bootstrap(port int, clusterHost *string, clusterUrls []string) error {
 					Host: hostValues[0],
 					Port: int32(port),
 				}
-				client, _, closer, err := client.New(node)
-				if err != nil {
-					log.Println(err)
-					continue
-				}
-				id, err := client.GetId(context.TODO(), &cluster.Void{})
-				if err != nil {
-					log.Println(err)
-					continue
-				}
-				closer()
-				node.Id = id.Id
+				state.JoinNode(node)
 				routes.Nodes = append(routes.Nodes, node)
 			}
 			server.Solicit(&routes)
