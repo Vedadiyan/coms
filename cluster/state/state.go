@@ -25,7 +25,7 @@ func init() {
 	id = uuid.New().String()
 }
 
-func JoinNode(node *pb.Node) {
+func joinNode(node *pb.Node, handleDisconnect func(master *grpc.ClientConn, conn pb.ClusterRpcServiceClient, stat <-chan client.Stat, closer func() error, id string)) {
 	if node.Id == id {
 		return
 	}
@@ -48,35 +48,16 @@ func JoinNode(node *pb.Node) {
 	}
 	nodes[node.Id] = node
 	conns[node.Id] = conn
-	go HandleDisconnect(master, conn, stat, closer, node.Id)
+	go handleDisconnect(master, conn, stat, closer, node.Id)
 	log.Println("joined", node.Port, node.Id)
 }
 
+func JoinNode(node *pb.Node) {
+	joinNode(node, HandleDisconnect)
+}
+
 func JoinNodeInit(node *pb.Node) {
-	if node.Id == id {
-		return
-	}
-	mut.Lock()
-	defer mut.Unlock()
-	if _, ok := nodes[node.Id]; ok {
-		return
-	}
-	master, conn, stat, closer, err := client.New(node)
-	if err != nil {
-		log.Println(err)
-		return
-	}
-	if len(node.Id) == 0 {
-		id, err := conn.GetId(context.TODO(), &pb.Void{})
-		if err != nil {
-			return
-		}
-		node.Id = id.Id
-	}
-	nodes[node.Id] = node
-	conns[node.Id] = conn
-	go HandleDisconnectInit(master, conn, stat, closer, node.Id)
-	log.Println("joined", node.Port, node.Id)
+	joinNode(node, HandleDisconnectInit)
 }
 
 func HandleDisconnect(master *grpc.ClientConn, conn pb.ClusterRpcServiceClient, stat <-chan client.Stat, closer func() error, id string) {
