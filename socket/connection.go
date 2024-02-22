@@ -122,7 +122,8 @@ func New(ctx context.Context, host string, hub string, options ...func(option *O
 		header.Add("id", id)
 		conn, err := upgrader.Upgrade(w, r, header)
 		if err != nil {
-			panic(err)
+			log.Println(err)
+			return
 		}
 		socket.id = id
 		socket.ip = r.RemoteAddr
