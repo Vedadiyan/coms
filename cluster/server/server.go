@@ -16,11 +16,7 @@ type Server struct {
 }
 
 func (server Server) Gossip(ctx context.Context, nodeList *pb.NodeList) (*pb.Void, error) {
-	localNodeList := pb.NodeList{
-		Id: state.GetId(),
-	}
-	localNodeList.Nodes = nodeList.Nodes
-	nodesAdded := state.AppendNodes(localNodeList.Nodes)
+	nodesAdded := state.AppendNodes(nodeList.Nodes)
 	if nodesAdded > 0 {
 		state.GossipAll(nodeList.Id)
 		state.Print()
