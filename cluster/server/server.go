@@ -23,7 +23,7 @@ func (server Server) Gossip(ctx context.Context, nodeList *pb.NodeList) (*pb.Voi
 	nodesAdded := state.AppendNodes(localNodeList.Nodes)
 	if nodesAdded > 0 {
 		state.GossipAll(nodeList.Id)
-		state.Print()
+		state.PrintCustom("[JOIN] nodes connected")
 	}
 	return &pb.Void{}, nil
 }
@@ -49,7 +49,7 @@ func (server Server) GetId(ctx context.Context, _ *pb.Void) (*pb.Id, error) {
 	return &id, nil
 }
 
-func New(host string) {
+func New(ctx context.Context, host string) {
 	lis, err := net.Listen("tcp", host)
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
@@ -57,9 +57,15 @@ func New(host string) {
 	s := grpc.NewServer()
 	pb.RegisterClusterRpcServiceServer(s, &Server{})
 	log.Printf("cluster listening at %v", lis.Addr())
-	if err := s.Serve(lis); err != nil {
-		log.Fatalf("failed to serve: %v", err)
-	}
+	go func() {
+		if err := s.Serve(lis); err != nil {
+			log.Fatalf("failed to serve: %v", err)
+		}
+		go func() {
+			<-ctx.Done()
+			s.Stop()
+		}()
+	}()
 }
 
 func Solicit(nodeList *pb.NodeList) {

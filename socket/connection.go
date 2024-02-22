@@ -1,6 +1,7 @@
 package socket
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -18,17 +19,19 @@ import (
 
 type Options struct {
 	authenticate  func(r *http.Request) (bool, error)
-	intercept     func(socket *Socket, message []byte) (bool, error)
+	intercept     func(socket *Socket, message *pb.ExchangeReq) (bool, error)
 	closeHandler  func(socket *Socket)
 	invisibleMode func(r *http.Request) (bool, error)
 }
 
 type Socket struct {
 	id            string
+	ip            string
 	conn          *websocket.Conn
 	header        http.Header
 	mut           sync.Mutex
 	invisibleMode bool
+	claims        map[string]any
 }
 
 func (socket *Socket) Emit(data []byte) {
@@ -58,6 +61,19 @@ func (socket *Socket) Id() string {
 	return socket.id
 }
 
+func (socket *Socket) IP() string {
+	return socket.ip
+}
+
+func (socket *Socket) SetClaim(key string, value any) {
+	socket.claims[key] = value
+}
+
+func (socket *Socket) GetClaim(key string) (any, bool) {
+	value, ok := socket.claims[key]
+	return value, ok
+}
+
 var (
 	_mut     sync.RWMutex
 	_sockets map[string]*Socket
@@ -70,7 +86,7 @@ func init() {
 	_groups = make(map[string]map[string]*Socket)
 }
 
-func New(host string, hub string, options ...func(option *Options)) {
+func New(ctx context.Context, host string, hub string, options ...func(option *Options)) {
 	for _, option := range options {
 		option(&_options)
 	}
@@ -79,7 +95,8 @@ func New(host string, hub string, options ...func(option *Options)) {
 			return true
 		},
 	}
-	http.HandleFunc(hub, func(w http.ResponseWriter, r *http.Request) {
+	serveMux := http.NewServeMux()
+	serveMux.HandleFunc(hub, func(w http.ResponseWriter, r *http.Request) {
 		if _options.authenticate != nil {
 			next, err := _options.authenticate(r)
 			if err != nil {
@@ -108,14 +125,17 @@ func New(host string, hub string, options ...func(option *Options)) {
 			panic(err)
 		}
 		socket.id = id
+		socket.ip = r.RemoteAddr
 		socket.conn = conn
 		socket.header = r.Header
+		socket.claims = make(map[string]any)
 		_mut.Lock()
 		_sockets[id] = socket
 		_mut.Unlock()
 		go socketHandler(socket)
 	})
-	http.HandleFunc("/monit", func(w http.ResponseWriter, r *http.Request) {
+
+	serveMux.HandleFunc("/monit", func(w http.ResponseWriter, r *http.Request) {
 		_mut.RLock()
 		sockets := make([]string, 0)
 		for key := range _sockets {
@@ -136,7 +156,7 @@ func New(host string, hub string, options ...func(option *Options)) {
 		}
 		json, err := json.Marshal(output)
 		if err != nil {
-			w.Header().Add("tatus", "500")
+			w.Header().Add("status", "500")
 			w.Write([]byte(err.Error()))
 			return
 		}
@@ -144,10 +164,20 @@ func New(host string, hub string, options ...func(option *Options)) {
 		w.Write(json)
 	})
 	log.Printf("Websocket listening at %s%s\r\n", host, hub)
-	err := http.ListenAndServe(host, nil)
+	server := http.Server{}
+	server.Addr = host
+	server.Handler = serveMux
+	err := server.ListenAndServe()
 	if err != nil {
 		panic(err)
 	}
+	go func() {
+		<-ctx.Done()
+		err := server.Shutdown(context.TODO())
+		if err != nil {
+			panic(err)
+		}
+	}()
 }
 
 func socketHandler(socket *Socket) {
@@ -167,7 +197,7 @@ func socketHandler(socket *Socket) {
 				log.Println(err.Error())
 			}
 			if _options.intercept != nil {
-				next, err := _options.intercept(socket, message)
+				next, err := _options.intercept(socket, &data)
 				if err != nil {
 					log.Println(err.Error())
 					return
@@ -180,11 +210,11 @@ func socketHandler(socket *Socket) {
 				}
 			}
 			switch common.Events(data.Event) {
-			case common.GROUP_JOIN:
+			case common.JOIN_GROUP:
 				{
 					socket.JoinGroup(data.To, data.Reply)
 				}
-			case common.GROUP_LEAVE:
+			case common.LEAVE_GROUP:
 				{
 					socket.LeaveGroup(data.To, data.Reply)
 				}
@@ -227,7 +257,7 @@ func (socket *Socket) JoinGroup(group string, inbox *string) {
 		socket.Reply(*inbox, "200")
 	}
 	if !socket.invisibleMode {
-		socket.sendToGroup(common.GROUP_JOIN, group, nil, []byte("Hello!"))
+		socket.sendToGroup(common.JOIN_GROUP, group, nil, []byte("Hello!"))
 	}
 }
 
@@ -248,7 +278,7 @@ func (socket *Socket) LeaveGroup(group string, inbox *string) {
 		socket.Reply(*inbox, "200")
 	}
 	if !socket.invisibleMode {
-		socket.sendToGroup(common.GROUP_LEAVE, group, nil, []byte("Goodbye!"))
+		socket.sendToGroup(common.LEAVE_GROUP, group, nil, []byte("Goodbye!"))
 	}
 }
 
@@ -338,7 +368,7 @@ func WithAuthentication(authenticator func(r *http.Request) (bool, error)) func(
 	}
 }
 
-func WithInterceptor(interceptor func(socket *Socket, message []byte) (bool, error)) func(option *Options) {
+func WithInterceptor(interceptor func(socket *Socket, message *pb.ExchangeReq) (bool, error)) func(option *Options) {
 	return func(option *Options) {
 		option.intercept = interceptor
 	}

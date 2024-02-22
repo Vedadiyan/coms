@@ -4,15 +4,15 @@ import (
 	"context"
 	"log"
 	"sync"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/vedadiyan/coms/cluster/client"
 	pb "github.com/vedadiyan/coms/cluster/proto"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/connectivity"
 )
 
 var (
-	ctx   context.Context
 	id    string
 	mut   sync.RWMutex
 	nodes map[string]*pb.Node
@@ -20,13 +20,12 @@ var (
 )
 
 func init() {
-	ctx = context.TODO()
 	nodes = make(map[string]*pb.Node)
 	conns = make(map[string]pb.ClusterRpcServiceClient)
 	id = uuid.New().String()
 }
 
-func JoinNode(node *pb.Node) {
+func joinNode(node *pb.Node, handleDisconnect func(master *grpc.ClientConn, conn pb.ClusterRpcServiceClient, stat <-chan client.Stat, closer func() error, id string)) {
 	if node.Id == id {
 		return
 	}
@@ -35,62 +34,97 @@ func JoinNode(node *pb.Node) {
 	if _, ok := nodes[node.Id]; ok {
 		return
 	}
-	conn, err := client.New(node)
+	master, conn, stat, closer, err := client.New(node)
 	if err != nil {
 		log.Println(err)
 		return
 	}
+	if len(node.Id) == 0 {
+		id, err := conn.GetId(context.TODO(), &pb.Void{})
+		if err != nil {
+			return
+		}
+		node.Id = id.Id
+	}
 	nodes[node.Id] = node
 	conns[node.Id] = conn
-	go handleDisconnect(conn, node.Id)
+	go handleDisconnect(master, conn, stat, closer, node.Id)
 	log.Println("joined", node.Port, node.Id)
 }
 
-func handleDisconnect(conn pb.ClusterRpcServiceClient, id string) {
-	disconnected := false
+func JoinNode(node *pb.Node) {
+	joinNode(node, HandleDisconnect)
+}
+
+func JoinNodeInit(node *pb.Node) {
+	joinNode(node, HandleDisconnectInit)
+}
+
+func HandleDisconnect(master *grpc.ClientConn, conn pb.ClusterRpcServiceClient, stat <-chan client.Stat, closer func() error, id string) {
+LOOP:
+	for stat := range stat {
+		switch stat {
+		case client.DISCONNECT:
+			{
+				mut.Lock()
+				delete(nodes, id)
+				delete(conns, id)
+				mut.Unlock()
+				closer()
+				PrintCustom("[LEAVE] nodes connected")
+				break LOOP
+			}
+		}
+	}
+}
+
+func HandleDisconnectInit(master *grpc.ClientConn, conn pb.ClusterRpcServiceClient, stat <-chan client.Stat, closer func() error, id string) {
+	localId := id
 	mut.RLock()
 	localConn := conns[id]
 	localNode := nodes[id]
 	mut.RUnlock()
-	for {
-		select {
-		case <-ctx.Done():
+	for stat := range stat {
+		switch stat {
+		case client.DISCONNECT:
 			{
-				return
+				mut.Lock()
+				delete(nodes, localId)
+				delete(conns, localId)
+				mut.Unlock()
+				master.Connect()
+				PrintCustom("[DISCONNECT] nodes connected")
 			}
-		default:
+		case client.CONNECT:
 			{
+				master.WaitForStateChange(context.TODO(), connectivity.TransientFailure)
 				newId, err := conn.GetId(context.TODO(), &pb.Void{})
 				if err != nil {
-					disconnected = true
-					mut.Lock()
-					delete(nodes, id)
-					delete(conns, id)
-					mut.Unlock()
-					// log.Println("connection lost", id)
+					log.Println(err)
+					continue
 				}
-				if disconnected && newId != nil {
-					mut.Lock()
-					localNode.Id = newId.Id
-					nodes[newId.Id] = localNode
-					conns[newId.Id] = localConn
-					mut.Unlock()
-					nodeList := pb.NodeList{}
-					nodeList.Id = GetId()
-					mut.RLock()
-					for key, value := range nodes {
-						if key == newId.Id {
-							continue
-						}
-						nodeList.Nodes = append(nodeList.Nodes, value)
+				localId = newId.Id
+				mut.Lock()
+				localNode.Id = newId.Id
+				nodes[newId.Id] = localNode
+				conns[newId.Id] = localConn
+				mut.Unlock()
+				nodeList := pb.NodeList{}
+				nodeList.Id = GetId()
+				mut.RLock()
+				for key, value := range nodes {
+					if key == newId.Id {
+						continue
 					}
-					mut.RUnlock()
-					_, err := conns[newId.Id].Gossip(context.TODO(), &nodeList)
-					if err == nil {
-						disconnected = false
-					}
+					nodeList.Nodes = append(nodeList.Nodes, value)
 				}
-				<-time.After(time.Millisecond * 25)
+				mut.RUnlock()
+				_, err = conns[newId.Id].Gossip(context.TODO(), &nodeList)
+				if err != nil {
+					log.Println(err)
+					continue
+				}
+				PrintCustom("[RECONNECT] nodes connected")
 			}
 		}
 	}
@@ -174,4 +208,10 @@ func Print() {
 	mut.RLock()
 	defer mut.RUnlock()
 	log.Println("nodes connected", len(nodes)-1)
+}
+
+func PrintCustom(message string) {
+	mut.RLock()
+	defer mut.RUnlock()
+	log.Println(message, len(nodes)-1)
 }
