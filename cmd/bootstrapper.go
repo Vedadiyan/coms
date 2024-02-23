@@ -13,7 +13,7 @@ import (
 	"github.com/vedadiyan/coms/socket"
 )
 
-func Bootstrap(port int, clusterHost *string, clusterUrls []string) error {
+func Bootstrap(port int, clusterHost *string, clusterUrls []string, options ...func(option *socket.Options)) error {
 	if clusterHost != nil {
 		log.Println("creating cluster")
 		selfHostValues := strings.Split(*clusterHost, ":")
@@ -49,6 +49,6 @@ func Bootstrap(port int, clusterHost *string, clusterUrls []string) error {
 		}
 		log.Println("cluster started")
 	}
-	socket.New(context.TODO(), fmt.Sprintf("127.0.0.1:%d", port), "/comms")
+	socket.New(context.TODO(), fmt.Sprintf("127.0.0.1:%d", port), "/comms", options...)
 	return nil
 }
