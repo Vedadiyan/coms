@@ -227,6 +227,10 @@ func socketHandler(socket *Socket) {
 				{
 					socket.Send(data.To, data.Message)
 				}
+			case common.WHO_AM_I:
+				{
+					socket.Send(data.To, data.Message)
+				}
 			}
 		}()
 	}
@@ -333,6 +337,21 @@ func (socket *Socket) Send(to string, message []byte) {
 		return
 	}
 	go sock.Emit(bytes)
+}
+
+func (socket *Socket) WhoAmI() {
+	msg := pb.ExchangeReq{
+		Event:   string(common.WHO_AM_I),
+		From:    state.GetId(),
+		To:      socket.id,
+		Message: []byte(socket.id),
+	}
+	bytes, err := proto.Marshal(&msg)
+	if err != nil {
+		log.Println(err.Error())
+		return
+	}
+	go socket.Emit(bytes)
 }
 
 func SendToGroup(msg *pb.ExchangeReq) {

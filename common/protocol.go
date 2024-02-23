@@ -8,4 +8,5 @@ const (
 	EMIT_GROUP  Events = Events("emit:group")
 	EMIT_SOCKET Events = Events("emit:socket")
 	REPLY       Events = Events("reply")
+	WHO_AM_I    Events = Events("whoami")
 )
